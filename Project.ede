@@ -1,0 +1,7 @@
+;; EDE Project Files are auto generated: Do Not Edit
+(ede-proj-project "content"
+  :file "Project.ede"
+  :name "content"
+  :targets 'nil
+  :makefile-type 'Makefile.am
+  )
