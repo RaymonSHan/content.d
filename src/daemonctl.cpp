@@ -2,13 +2,15 @@
 //#include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
-//#include <stdlib.h>
-//#include <unistd.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
 //#include <getopt.h>
 //#include <signal.h>  
 //#include <sys/param.h>  
 //#include <sys/types.h>  
-//#include <sys/stat.h> 
+//#include <sys/stat.h>
+#include <fcntl.h>
 #include <time.h> 
 #include <sys/mman.h>
 //#include "../include/daemonctl.h"1
@@ -28,6 +30,7 @@
 // test for DONTNEED behavior
 union assignAddress{
   long long int addressLong;
+  char *addressChar;
   void *addressVoid;
   long long int *addressLPointer;
 };
@@ -55,11 +58,48 @@ union assignAddress{
 #define MMFLAG    MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE
 #endif //HUGE_PAGE_USED
 
+#define FILEPATH "/home/raymon/mapfile"
+//#define NUMINTS  (1000)
+//#define FILESIZE (NUMINTS * sizeof(int))
+
 union assignAddress assignStart, realStart, usedp;
 timespec ts1, ts2, ts3, ts4, ts5;
 
 unsigned long long difftime (timespec &t2, timespec &t1) {
   return ((t2.tv_sec-t1.tv_sec)*1000000000 + (t2.tv_nsec-t1.tv_nsec));
+}
+
+void perrorexit(const char* s) {
+  perror(s);
+  exit(-1);
+}
+
+int mmapfile(void) {
+  int fd;
+  assignStart.addressLong = SEGMENT_START;
+
+  int result;
+  char buf[] = "this is test little long";
+  fd = open(FILEPATH, O_RDWR);
+  if (fd == -1) perrorexit("Error opening file for writing");
+
+  realStart.addressVoid = mmap (assignStart.addressVoid, NORMAL_PAGE_SIZE, 
+				PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (realStart.addressVoid == MAP_FAILED) perrorexit("Error in mmap file");
+
+  result = lseek(fd, sizeof(buf)-1, SEEK_SET);
+  if (result == -1) perrorexit("Error calling lseek()");
+
+  result = write(fd, "", 1);
+  if (result == -1) perrorexit("Error calling write()");  //  printf("%s\n", realStart.addressChar);
+
+  for (int i=0; i<100; i++) {
+    printf ("%s\n", (realStart.addressChar));
+    sleep(5);
+  }
+  munmap(realStart.addressVoid, 10000);
+  close(fd);
+  return 0;
 }
 
 void map128M(union assignAddress add) {
@@ -188,7 +228,8 @@ int hugePageAlloc () {
 }
 
 int main(int , char **) {
+  mmapfile();
   //  mapunmap();
-  madviseDontNeed();
+  //  madviseDontNeed();
   //  hugePageAlloc();
 }
