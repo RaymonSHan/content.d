@@ -5,16 +5,21 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 //#include <getopt.h>
-//#include <signal.h>  
-//#include <sys/param.h>  
-//#include <sys/types.h>  
-//#include <sys/stat.h>
+#include <signal.h>  
+#include <sys/param.h>  
+#include <sys/types.h>  
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h> 
 #include <sys/mman.h>
 #include <sys/inotify.h>
+#include <sys/stat.h>
 #include <limits.h>    // for NAME_MAX is 255
+#include <signal.h>
+#include <utmp.h> 
+#include <pwd.h>
 //#include "../include/daemonctl.h"
 
 //#define HUGE_PAGE_USED
@@ -30,7 +35,8 @@
 
 // for x64 page table is 9-9-9-9-12 level, for normal page with size of 4k
 // test for DONTNEED behavior
-union assignAddress{
+union assignAddress
+{
   long long int addressLong;
   char *addressChar;
   void *addressVoid;
@@ -65,21 +71,187 @@ union assignAddress{
 //#define FILESIZE (NUMINTS * sizeof(int))
 
 union assignAddress assignStart, realStart, usedp;
+long utmpsize = 0;
 timespec ts1, ts2, ts3, ts4, ts5;
 
-unsigned long long difftime (timespec &t2, timespec &t1) {
+unsigned long long difftime (timespec &t2, timespec &t1)
+{
   return ((t2.tv_sec-t1.tv_sec)*1000000000 + (t2.tv_nsec-t1.tv_nsec));
 }
 
-void perrorexit(const char* s) {
+void perrorexit(const char* s)
+{
   perror(s);
   exit(-1);
 }
 
+/*
+int read_utmp (const char *filename, int *n_entries, utmp **utmp_buf)
+{
+  FILE *utmpfile;
+  struct stat file_stats;
+  size_t n_read;
+  size_t size;
+  struct utmp *buf;
+
+  utmpfile = fopen (filename, "r");
+  if (utmpfile == NULL) return 1;
+
+  fstat (fileno (utmpfile), &file_stats);
+  size = file_stats.st_size;
+  if (size > 0) buf = (struct utmp*) malloc (size);
+  else {
+    fclose (utmpfile);
+    return 1;
+  }
+
+//   Use < instead of != in case the utmp just grew.  
+  n_read = fread (buf, 1, size, utmpfile);
+  if (ferror (utmpfile) || fclose (utmpfile) == EOF
+      || n_read < size)
+    return 1;
+
+  *n_entries = size / sizeof (struct utmp);
+  *utmp_buf = buf;
+
+  return 0;
+}
+*/
+
+int mmapUTMP(int utmpfile, utmp **utmp_buf)
+{
+  //  assignStart.addressLong = SEGMENT_START;
+  if (!utmpfile) utmpfile = open(UTMP_FILE, O_RDONLY);
+  realStart.addressVoid = mmap (0, NORMAL_PAGE_SIZE*100, 
+				PROT_READ, MAP_SHARED, utmpfile, 0);
+  if (realStart.addressVoid == MAP_FAILED) perrorexit("Error in mmap file");
+
+  *utmp_buf = static_cast<utmp*>(realStart.addressVoid);
+  //  munmap(realStart.addressVoid, NORMAL_PAGE_SIZE*100);
+  return utmpfile;
+}
+
+int entriesUTMP(int utmpfile)
+{
+  struct stat file_stats;
+  size_t size;
+
+  fstat (utmpfile, &file_stats);
+  size = file_stats.st_size;
+  return( size / sizeof (struct utmp)); 
+}
+
+#define DEV_DIR_WITH_TRAILING_SLASH "/dev/"                                     
+#define DEV_DIR_LEN (sizeof (DEV_DIR_WITH_TRAILING_SLASH) - 1) 
+#define IS_ABSOLUTE_FILE_NAME(p) (*p == '/')
+
+#define ESC_SAVE_CURSOR "\e[s"
+#define ESC_RESTORE_CURSOR "\e[u"
+#define ESC_SET_CURSOR "\e[1;48f"
+#define ESC_RESTORE_COLOR "\e[0;37m"
+#define ESC_SET_COLOR "\e[1;36m"
+
+#define ESC_WRITE(str, mess) snprintf(str, sizeof(str), "%s%s%s%s%s%s", \
+				      ESC_SAVE_CURSOR, ESC_SET_CURSOR, ESC_SET_COLOR, \
+				      mess, ESC_RESTORE_COLOR, ESC_RESTORE_CURSOR)
+void getScreenText(char **txt)
+{
+  time_t rtmtime;
+
+  time(&rtmtime);
+  *txt =  ctime(&rtmtime);
+}
+
+void writeToPTS(char *pts, char *str)
+{
+  int fd, result;
+  char screenstr[256];
+
+  fd = open(pts, O_RDWR);
+  if (fd == -1) perrorexit("Error opening file for writing");
+
+  ESC_WRITE(screenstr, str);
+  result =  write(fd, screenstr, strlen(screenstr));
+  if (result == -1) perrorexit("Error calling write()"); 
+  fdatasync(fd);
+  close(fd);
+}
+
 #define BUF_LEN (10 * (sizeof(struct inotify_event) + NAME_MAX + 1))
 
-//#include "tlpi_hdr.h"
-/* Display information from inotify_event structure */
+int inotifyUTMP(char *filename)
+{
+  int inotifyFd, wd;
+  char buf[BUF_LEN] __attribute__ ((aligned(8)));
+  ssize_t numRead;
+  char *p;
+  struct inotify_event *event;
+
+  inotifyFd = inotify_init();                 /* Create inotify instance */
+  if (inotifyFd == -1) perrorexit("inotify_init");
+
+  wd = inotify_add_watch(inotifyFd, filename, IN_MODIFY);
+  if (wd == -1) perrorexit("inotify_add_watch");
+
+  for (;;) {                                  /* Read events forever */
+    numRead = read(inotifyFd, buf, BUF_LEN);
+    if (numRead == 0) perror("read() from inotify fd returned 0!");
+
+    if (numRead == -1) perrorexit("read");
+    //    printf("Read %ld bytes from inotify fd\n", (long) numRead);
+
+    /* Process all of the events in buffer returned by read() */
+    for (p = buf; p < buf + numRead; ) {
+      event = (struct inotify_event *) p;
+      if (event->mask & IN_MODIFY)        printf("IN_MODIFY\n ");
+      p += sizeof(struct inotify_event) + event->len;
+    }
+  }
+  exit(EXIT_SUCCESS);
+}
+
+void manyIncrease(void)
+{
+  struct passwd *pw;                                                         
+  uid_t uid;                                                                 
+  uid_t NO_UID = -1; 
+
+  int nowe;
+  utmp *utmpbuf, *nowu;
+  char line[sizeof (utmpbuf->ut_line) + DEV_DIR_LEN + 1];                      
+  char *p = line, *modelstr;
+  int utmphandle;  
+
+  errno = 0;                                                                 
+  uid = geteuid ();                                                          
+  pw = (uid == NO_UID && errno ? NULL : getpwuid (uid));
+  if (!pw) perrorexit("cannot find user ID");
+  utmphandle = mmapUTMP(0, &utmpbuf);
+
+  for(;;) {
+    nowe = entriesUTMP(utmphandle);
+    nowu = utmpbuf;
+
+    while (nowe--) {
+      if (nowu->ut_type == USER_PROCESS) {
+	if ( !strncmp(pw->pw_name, nowu->ut_user, sizeof(nowu->ut_user))) {
+
+	  if ( ! IS_ABSOLUTE_FILE_NAME (nowu->ut_line))                             
+	    p = strncpy (p, DEV_DIR_WITH_TRAILING_SLASH, sizeof(DEV_DIR_WITH_TRAILING_SLASH));
+	  else
+	    *p = 0;
+	  strncat (p, nowu->ut_line, sizeof(nowu->ut_line));
+	  getScreenText(&modelstr);
+	  writeToPTS(p, modelstr);  
+	}
+      }
+      nowu++;
+    }
+    usleep(250*1000);
+  }
+  return;
+}
+
 static void displayInotifyEvent(struct inotify_event *i)
 {
   printf("    wd =%2d; ", i->wd);
@@ -120,6 +292,7 @@ int inotifytest(void)
   inotifyFd = inotify_init();                 /* Create inotify instance */
   if (inotifyFd == -1) perrorexit("inotify_init");
 
+  //  wd = inotify_add_watch(inotifyFd, UTMP_FILE, IN_MODIFY);
   wd = inotify_add_watch(inotifyFd, FILEPATH, IN_ALL_EVENTS);
   if (wd == -1) perrorexit("inotify_add_watch");
 
@@ -140,7 +313,8 @@ int inotifytest(void)
   exit(EXIT_SUCCESS);
 }
 
-int mmapfile(void) {
+int mmapfile(void)
+{
   int fd;
   assignStart.addressLong = SEGMENT_START;
 
@@ -168,7 +342,8 @@ int mmapfile(void) {
   return 0;
 }
 
-void map128M(union assignAddress add) {
+void map128M(union assignAddress add)
+{
   add.addressVoid = mmap (add.addressVoid, 128*1024*1024, PROT_READ | PROT_WRITE, 
 			  MMFLAG | MAP_FIXED, -1, 0);
   for (unsigned int i=0; i<(128*1024*1024/sizeof(long long)); i++) {
@@ -177,7 +352,8 @@ void map128M(union assignAddress add) {
   }
 }
 
-void unmap128M(union assignAddress add) {
+void unmap128M(union assignAddress add)
+{
   munmap(add.addressVoid, 128*1024*1024);
 }
 
@@ -185,7 +361,8 @@ void unmap128M(union assignAddress add) {
 // real 7.8s, user 0.2s, sys 7.6s for 400*128M alloc and page fault 
 // it same as MADV_DONTNEED
 // avg for 4k page is 595ns
-int mapunmap() {
+int mapunmap() 
+{
   usedp.addressLong = SEGMENT_START;
   for (int i=0; i<400; i++) {
     //    printf("128 Loop %d, addr:%llx\n", i, usedp.addressLong);
@@ -206,14 +383,16 @@ void get128M(union assignAddress add) {
 }
 
 // madvise for HUGEPAGE will fail
-void back128M(union assignAddress add) {
+void back128M(union assignAddress add)
+{
   FREE_PAGE(add, 128*1024*1024/PAGE_SIZE);
 }
 
 // time ./content for MADV_DONTNEED
 // real 7.8s, user 0.2s, sys 7.6s for 400*128M alloc and page fault
 // avg for 4k page is 595ns
-int madviseDontNeed () {
+int madviseDontNeed ()
+{
   assignStart.addressLong = SEGMENT_START;
   long long int memsize = 1LL << 39;
   //  printf("memsize: 0x%llx\n", memsize);
@@ -244,7 +423,8 @@ int madviseDontNeed () {
 
 #define SIZE_RAY 10
 
-int hugePageAlloc () {
+int hugePageAlloc ()
+{
   char *pagestart1;
   char *nowstart, *nowend;
 
@@ -293,10 +473,45 @@ int hugePageAlloc () {
   return 0;
 }
 
-int main(int , char **) {
-  inotifytest();
-  // mmapfile();
+int initDaemon(void)
+{
+  int pidFirst, pidSecond;  
+  int i;  
+
+  // the first child thread, for relese console
+  pidFirst = fork();
+  if (pidFirst > 0) exit(0);                      // is parent thread, exit
+  else if (pidFirst < 0) exit(1);                 // error in fork
+  setsid();                                       // first child be leader  
+
+  // the second child thread, for could not get console again
+  pidSecond = fork();
+  if (pidSecond > 0) exit(0);                     // second thread could not get console
+  else if (pidSecond < 0) exit(1);                // the second never be leader
+
+  for (i=0; i < NOFILE; ++i) close(i);            // close all handle from parent
+  
+  if (chdir("/tmp")) exit(1);                     // change working dirctory to /tmp  
+  umask(0);                                       // remove file mask
+
+  manyIncrease();                                 // Real work
+
+  return 0;
+}
+
+char myutmp[] = UTMP_FILE;
+
+int main(int , char **)
+{
+  realStart.addressLong = 0;
+  utmpsize = 0;
+  //  inotifyUTMP(myutmp);
+  initDaemon();
+  //  manyIncrease();
+  //  inotifytest();
+  //  mmapfile();
   //  mapunmap();
   //  madviseDontNeed();
   //  hugePageAlloc();
+  return 0;
 }
