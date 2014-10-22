@@ -12,6 +12,7 @@
 #include <sys/epoll.h>
 #include <sys/wait.h>
 #include "../include/raymoncommon.h"
+#include "../include/rmemory.hpp"
 #include "../include/epollpool.hpp"
 
 int RBaseThread::RpollClone(void *init)
@@ -54,11 +55,12 @@ RpollGlobalApp::RpollGlobalApp()
 }
 
 #define CLONETHREAD(acts)						\
-  childStack = getStack();						\
-  init = (struct initStruct*)(childStack+STACK_SIZE-NORMAL_PAGE_SIZE);	\
+  cStack = getStack();							\
+  init = (struct initStruct*)						\
+    (cStack.aLong + SIZE_THREAD_STACK - SIZE_NORMAL_PAGE);		\
   init->globalApp = this;						\
   init->runThread = &acts;						\
-  clone(&(RBaseThread::RpollClone), childStack+STACK_SIZE,		\
+  clone(&(RBaseThread::RpollClone), cStack.pChar + SIZE_THREAD_STACK,	\
 	CLONE_VM | CLONE_FILES, init);
 
 #define WAITFORSIGNAL(pApp, mode)					\
@@ -68,11 +70,10 @@ RpollGlobalApp::RpollGlobalApp()
   pApp->SetRpollStatue(oldmode, newmode);			\
   if (pApp->GetRpollStatue() != newmode) exit(-1);
 
-
 int RpollGlobalApp::StartRpoll(int flag, struct sockaddr_in *serveraddr)
 {
   int i;
-  char *childStack;
+  ADDR cStack;
   struct initStruct *init;
 
   ServerAddr = *serveraddr;
@@ -124,10 +125,9 @@ int RpollAcceptThread::RpollFunc(void)
       ev.data.fd = clifd;
       ev.events = EPOLLIN | EPOLLET;
       epoll_ctl(pApp->ScheduleRead[0]->epollHandle, EPOLL_CTL_ADD, clifd, &ev);
+      printf("after accept\n");
     }
   }
-
-
   return 0;
 }
 
@@ -188,7 +188,10 @@ class RpollGlobalApp RpollApp;
 
 void killAllChild(int)
 {
+  static int havedone= 0;
   int i;
+  if (havedone) return;
+  else havedone = 1;
   for (i=0; i<MAX_WORK_THREAD; i++)
     kill(RpollApp.WorkThreadGroup[i].ReturnWorkId(), SIGTERM);
   for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
@@ -199,8 +202,24 @@ void killAllChild(int)
     kill(RpollApp.RpollWriteGroup[i].ReturnWorkId(), SIGTERM);
 }
 
+INT testreterr()
+{
+  __TRY
+    __MARK(First)
+    __DO_(ret_err == 0, "is 0");
+  __DO_(ret_err != 0, "is not 0");
+ 
+
+  __CATCH_BEGIN
+    __BETWEEN(First, MarkMax) printf("between %lld\n", ret_err);
+    __BETWEEN(First, MarkMax) printf("between %lld\n", ret_err);
+  __CATCH_END
+}
+
 int main (int, char**)
 {
+  //  testreterr();
+  //  return 0;
 
   struct sockaddr_in addr;
   char local_addr[] = "127.0.0.1";    
