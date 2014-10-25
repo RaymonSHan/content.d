@@ -10,7 +10,9 @@ ADDR getMemory(INT size, INT flag)
 {
   static ADDR totalMemoryStart = {SEG_START_STACK};
   ADDR p;
+
   p.aLong = __sync_fetch_and_add(&(totalMemoryStart.aLong), size);
+  p.aLong = ((p.aLong - 1) & (-1*SIZE_NORMAL_PAGE)) + SIZE_NORMAL_PAGE;
   p.pVoid = mmap (p.pVoid, size, PROT_READ | PROT_WRITE,
 		  MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | flag, -1, 0);
   return p;
@@ -32,6 +34,7 @@ CMemoryAlloc::CMemoryAlloc()
 
 #ifdef _TESTCOUNT
   GetCount = GetSuccessCount = FreeCount = FreeSuccessCount = 0;
+  FreeLoop = GetLoop = GetFail = 0;
   //  hStart = CreateEvent(0, TRUE, FALSE, 0);
 #endif // _TESTCOUNT
 
@@ -105,7 +108,7 @@ void CMemoryAlloc::DisplayContext(void)
 INT CMemoryAlloc::GetMemoryList(ADDR &nlist)
 {
   __TRY
-    __DO_(GetOneList(nlist), "Not alloc context!\n")
+    __DO(GetOneList(nlist))
     nlist.pList->nextList.pList = MARK_USED;
     if (!DirectFree) AddToUsed(nlist);
   __CATCH
@@ -123,7 +126,6 @@ CMemoryListCriticalSection::CMemoryListCriticalSection()
 {
   InProcess = usedProcess = NOT_IN_PROCESS;
 }
-
 
 INT CMemoryListCriticalSection::GetOneList(ADDR &nlist)
 {
@@ -182,18 +184,27 @@ INT CMemoryListCriticalSection::AddToUsed(ADDR nlist)
 INT CMemoryListLockFree::GetOneList(ADDR &nlist)
 {
   ADDR  next;
+  volatile INT* start = &FreeBufferStart.aLong;
+  BOOL changed;
 #ifdef _TESTCOUNT
   __sync_fetch_and_add(&GetCount, 1);
   __sync_fetch_and_add(&GetSuccessCount, 1);
 #endif // _TESTCOUNT
 
+  next = nlist;  //
   do {
-    nlist = FreeBufferStart;
-    next = FreeBufferStart.pList->nextList;
-    //    printf("before nlist,next: %llx,%llx\n", nlist.aLong, next.aLong);
+    //   if (next != nlist)   //
+    changed = 0;
+    do {
+      nlist.aLong = *start;
+      if (nlist.aLong > 0)
+	changed = __sync_bool_compare_and_swap(start, nlist.aLong, 0);
+    } while (!changed);
+
+    changed = 0;
+    next = nlist.pList->nextList;
     if (next > MARK_MAX_INT) {                   // Have free
-      next.aLong = CmpExg(&FreeBufferStart.aLong, nlist.aLong, next.aLong);
-      //    printf("after nlist,next: %llx,%llx\n", nlist.aLong, next.aLong);
+      changed = __sync_bool_compare_and_swap(start, 0, next.aLong);
     }
     else {
       nlist.pList = NULL;
@@ -202,8 +213,8 @@ INT CMemoryListLockFree::GetOneList(ADDR &nlist)
 #endif // _TESTCOUNT
       break;
     }
-  }
-  while(next != nlist);
+  } while (!changed);
+  //  while(next != nlist);
   if (nlist.pList != NULL) __sync_fetch_and_add(&FreeNumber, -1);
 
   return (nlist.pList == NULL);
@@ -211,18 +222,33 @@ INT CMemoryListLockFree::GetOneList(ADDR &nlist)
 
 INT CMemoryListLockFree::FreeOneList(ADDR nlist)
 {
-  printf("In free\n");
   ADDR  next;
+  BOOL changed;
+  volatile INT* start = &FreeBufferStart.aLong;
 #ifdef _TESTCOUNT
   __sync_fetch_and_add(&FreeCount, 1);
   __sync_fetch_and_add(&FreeSuccessCount, 1);
 #endif // _TESTCOUNT
+
+  next = nlist;  //
   do {
-    next = FreeBufferStart;
-    nlist.pList->nextList = FreeBufferStart;
-    nlist.aLong = CmpExg(&FreeBufferStart.aLong, next.aLong, nlist.aLong);
+    //    if (next != nlist)  
+
+     changed = 0;
+    do {
+      next.aLong = *start;
+      if (next.aLong > 0)
+	changed = __sync_bool_compare_and_swap(start, next.aLong, 0);
+    } while (!changed);
+
+    changed = 0;
+
+    nlist.pList->nextList = next;
+    //    nlist.aLong = CmpExg(start, next.aLong, nlist.aLong);
+    changed = __sync_bool_compare_and_swap(start, 0, nlist.aLong);
   }
-  while (next != nlist);
+  while (!changed);
+  //  while (next != nlist);
   __sync_fetch_and_add(&FreeNumber, 1);
   return 0;
 }
@@ -232,32 +258,29 @@ INT CMemoryListLockFree::AddToUsed(ADDR )//nlist)
   return 0;
 }
 
+
+#include <sched.h>
+#include <sys/wait.h>
+
 int main(int, char**)
 {
-  ADDR nlist[250];
-  //  CMemoryListCriticalSection m;
-  CMemoryListLockFree m;
-
+  ADDR cStack;
+  //   CMemoryListCriticalSection m;
+    CMemoryListLockFree m;
+  int status;
+ 
   m.SetMemoryBuffer(10, 80, 64);
-  m.DisplayInfo();
-  for (int i=0; i<9; i++) {
-    m.GetMemoryList(nlist[i]);
-  }
-  m.DisplayInfo();
-  
-  for (int i=10; i<11; i++) {
-    m.GetMemoryList(nlist[i]);
-  }
-  m.DisplayInfo();
-  for (int i=6; i>3; i--) {
-    m.FreeMemoryList(nlist[i]);
-  }
-  m.DisplayInfo();
-  for (int i=20; i<25; i++) {
-    m.GetMemoryList(nlist[i]);
-  }
-  m.DisplayInfo();
 
+
+  cStack = getStack();
+  clone (&ThreadItem, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
+  cStack = getStack();
+  clone (&ThreadItem, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
+
+  waitpid(-1, &status, __WCLONE);
+  waitpid(-1, &status, __WCLONE);
+
+    m.DisplayInfo();
   return 0;
 }
 
@@ -269,16 +292,40 @@ void CMemoryAlloc::DisplayInfo(void)
   printf("Total:%10lld, Free:%10lld\n", TotalNumber, FreeNumber);
   printf("Get  :%10lld, Succ:%10lld\n", GetCount, GetSuccessCount);
   printf("Free :%10lld, Succ:%10lld\n", FreeCount, FreeSuccessCount);
-  printf("MinFree:%8lld\n", MinFree);
+  printf("GLoop:%10lld, FLoop:%9lld, GetFail:%10lld\n", GetLoop, FreeLoop, GetFail);
+
+  printf("MinFree:%8lld,\n", MinFree);
 
   volatile ADDR item;
   printf("buffer start, end: %llx, %llx\n", FreeBufferStart.aLong, FreeBufferEnd.aLong); 
-  item.pList = RealBlock.pList;
-  for (int i=0; i<TotalNumber; i++) {
-    printf("%5d:%p, %p, %p,\n", i, item.pList, item.pList->nextList.pVoid, item.pList->usedList.pVoid);
-    usleep(10);
-    item.aLong += BorderSize;
+    item.pList = RealBlock.pList;
+    for (int i=0; i<TotalNumber; i++) {
+      printf("%5d:%p, %p, %p,\n", i, item.pList, item.pList->nextList.pVoid, item.pList->usedList.pVoid);
+      item.aLong += BorderSize;
   }
+}
+
+#define TEST_TIMES 10000000
+#define TEST_ITMES 3
+
+int ThreadItem(void *para)
+{
+__TRY
+  ADDR item[TEST_ITMES+2];
+  CMemoryAlloc* cmem = (CMemoryAlloc*) para;
+  for (int i=0; i<TEST_TIMES; i++) {
+    for (int j=0; j<TEST_ITMES; j++) {
+      cmem->GetMemoryList(item[j]);
+      //    if (item[j].aLong != 0) cmem->FreeMemoryList(item[j]);
+    }
+
+        for (int j=0; j<TEST_ITMES; j++) {
+          if (item[j].aLong != 0) cmem->FreeMemoryList(item[j]);
+        }
+
+  }
+  //  cmem->DisplayInfo();
+__CATCH
 }
 
 /*
@@ -438,3 +485,7 @@ int main(int argc, TCHAR* argv[], TCHAR* envp[])
 
 
 
+/*
+6.1 1cpu error
+9.2 1cpu ok
+ */

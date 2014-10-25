@@ -98,12 +98,13 @@ public:
 
 #ifdef _TESTCOUNT
 public:
-  INT   GetCount;
-  INT   GetSuccessCount;
-  INT   FreeCount;
-  INT   FreeSuccessCount;
+  INT   GetCount, GetSuccessCount;
+  INT   FreeCount, FreeSuccessCount;
   INT   MinFree;
+
+  INT   FreeLoop, GetLoop, GetFail;
   INT   hStart;
+
 #endif  // _TESTCOUNT
 
 public:
@@ -129,7 +130,7 @@ public:
   void  DisplayInfo(void);
   //  void                          ResetCount();
   //  virtual void                  CheckEmptyList(void);
-  //  int                           ThreadItem(void *lpParam);
+
   //  void                          TestList(INT threadNumber, INT getNumber, INT fullTimes, BOOL wait=0);
 #endif  // _TESTCOUNT
 };
@@ -148,12 +149,18 @@ public:
   CMemoryListCriticalSection();
 };
 
+int                             ThreadItem(void *para);
+
 class CMemoryListLockFree: public CMemoryAlloc
 {
 private:
   virtual INT                   GetOneList(ADDR &nlist);
   virtual INT                   FreeOneList(ADDR nlist);
   virtual INT                   AddToUsed(ADDR nlist);
+public:
+  INT                   GetOneList2(ADDR &nlist);
+  INT                   FreeOneList2(ADDR nlist);
+
 };
 
 class CListItem
