@@ -15,7 +15,7 @@ void __MESSAGE(INT level, const char *_file, const char *_func, INT ret, const c
 {
   va_list ap;
 
-  if (level) return;
+  if (!level) return;
   if (_Format) {
     va_start(ap, _Format);
     vprintf(_Format, ap);

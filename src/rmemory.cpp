@@ -1,8 +1,10 @@
 
+#define _TESTCOUNT
+#include <unistd.h>
 #include "../include/rmemory.hpp"
 
 volatile INT GlobalTime = 0;
-static CListItem *isNULL = 0;
+static ADDR isNULL = {0};
 
 ADDR getMemory(INT size, INT flag)
 {
@@ -19,20 +21,21 @@ ADDR getStack(void)
   return getMemory(SIZE_THREAD_STACK, MAP_GROWSDOWN);
 }
 
-CMemoryAlloc::CMemoryAlloc(ADDR memstart)
+CMemoryAlloc::CMemoryAlloc()
 { 
-  StartBlock = memstart;
   RealBlock.aLong = 0;
   BorderSize = TotalSize = 0;
 
   TotalBuffer.aLong = UsedItem.aLong = FreeBufferStart.aLong = FreeBufferEnd.aLong = 0;
   TotalNumber = FreeNumber = 0;
-  InUsedListProcess = NOT_IN_PROCESS;
+  //  InUsedListProcess = NOT_IN_PROCESS;
 
 #ifdef _TESTCOUNT
   GetCount = GetSuccessCount = FreeCount = FreeSuccessCount = 0;
-  hStart = CreateEvent(0, TRUE, FALSE, 0);
+  //  hStart = CreateEvent(0, TRUE, FALSE, 0);
 #endif // _TESTCOUNT
+
+  DirectFree = 1;
 }
 
 CMemoryAlloc::~CMemoryAlloc()
@@ -42,27 +45,27 @@ CMemoryAlloc::~CMemoryAlloc()
 
 INT     CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border)
 {
-  INT   realSize;
+  //  INT   realSize;
   ADDR  thisItem, nextItem;
   INT   i;
 
   __TRY
     __MARK(mmapMemory)
-    realSize = ((size-1) / border + 1) * border;
-    TotalSize = realSize * number;
+    BorderSize = ((size-1) / border + 1) * border;
+    TotalSize = BorderSize * number;
     RealBlock = getMemory(TotalSize, 0);
-    __DO(StartBlock.aLong != RealBlock.aLong);
+    __DO(RealBlock.pVoid == MAP_FAILED);
 
     BufferSize = size - sizeof(CListItem);
     thisItem = nextItem = RealBlock;
     for (i=0; i<number-1; i++) {
-      nextItem.aLong += realSize;
+      nextItem.aLong += BorderSize;
       thisItem.pList->nextList = nextItem;
       thisItem = nextItem;
     }
     FreeBufferStart = TotalBuffer = RealBlock;
     FreeBufferEnd = nextItem;
-    nextItem.pList = MARK_FREE_END;
+    nextItem.pList->nextList.pList = MARK_FREE_END;
     
     TotalNumber = FreeNumber = number;
 #ifdef _TESTCOUNT
@@ -85,33 +88,53 @@ void CMemoryAlloc::SetListDetail(char *listname, INT directFree, INT timeout)
 {
 }
 											//
-void CMemoryAlloc::DisplayContext()
+void CMemoryAlloc::DisplayContext(void)
 {
   ADDR mList = UsedItem;
-  while (mList.aLong) {
+  INT num = TotalNumber + 3;
+
+  while (mList.aLong && num) {
     printf("0x%p:%lld->", mList.pList, mList.pList->countDown);
     mList = mList.pList->usedList;
+    num--;
   }
   if (UsedItem.aLong) printf("\n");
+  if (!num) printf("ERROR\n");
 }
 
-CMemoryListCriticalSection::CMemoryListCriticalSection(ADDR memstart) 
-  : CMemoryAlloc(memstart)
+INT CMemoryAlloc::GetMemoryList(ADDR &nlist)
 {
-  InProcess = NOT_IN_PROCESS;
-  pInGetProcess = pInFreeProcess = &InProcess;
+  __TRY
+    __DO_(GetOneList(nlist), "Not alloc context!\n")
+    nlist.pList->nextList.pList = MARK_USED;
+    if (!DirectFree) AddToUsed(nlist);
+  __CATCH
 }
+
+INT CMemoryAlloc::FreeMemoryList(ADDR nlist)
+{
+  __TRY
+    if (!DirectFree) nlist.pList->countDown = 2;
+    else __DO(FreeOneList(nlist))
+  __CATCH
+}
+
+CMemoryListCriticalSection::CMemoryListCriticalSection()
+{
+  InProcess = usedProcess = NOT_IN_PROCESS;
+}
+
 
 INT CMemoryListCriticalSection::GetOneList(ADDR &nlist)
 {
-  __LOCKp(pInGetProcess)
+  __LOCK(InProcess)
 #ifdef _TESTCOUNT
     GetCount++;
 #endif // _TESTCOUNT
   nlist = FreeBufferStart;                                      // Get the first free item
+
   if (nlist.pList->nextList > MARK_MAX_INT) {                   // Have free
     FreeBufferStart=nlist.pList->nextList;
-    nlist.pList->nextList.pList = MARK_USED;
     FreeNumber--;
 #ifdef _TESTCOUNT
     if (FreeNumber<MinFree) MinFree = FreeNumber;
@@ -119,14 +142,15 @@ INT CMemoryListCriticalSection::GetOneList(ADDR &nlist)
 #endif // _TESTCOUNT
   }
   else nlist.pList = NULL;
-  __FREEp(pInGetProcess)
-  return 0;
+
+  __FREE(InProcess)
+  return (nlist.pList == NULL);
 }
 
 INT CMemoryListCriticalSection::FreeOneList(ADDR nlist)
 {
   __TRY
-    __LOCKp(pInFreeProcess)
+    __LOCK(InProcess)
 #ifdef _TESTCOUNT
     FreeCount++;
 #endif // _TESTCOUNT
@@ -139,36 +163,125 @@ INT CMemoryListCriticalSection::FreeOneList(ADDR nlist)
     FreeSuccessCount++;
 #endif // _TESTCOUNT
     FreeNumber++;
-    __FREEp(pInFreeProcess)
+    __FREE(InProcess)
   __CATCH_BEGIN
-    __FREEp(pInFreeProcess)
+    __FREE(InProcess)
  __CATCH_END
 }
 
-INT CMemoryListCriticalSection::GetMemoryList(ADDR &nlist)
+INT CMemoryListCriticalSection::AddToUsed(ADDR nlist)
 {
-  __TRY
-    __DO_(GetOneList(nlist), "Not alloc context!\n")
-    if (!DirectFree) {
-      __LOCKp(pInGetProcess)
-      nlist.pList->usedList = UsedItem;
-      UsedItem = nlist;
-      __FREEp(pInGetProcess)
-      nlist.pList->countDown = TimeoutInit;
-    }
-  __CATCH
+  __LOCK(usedProcess)
+  nlist.pList->usedList = UsedItem;
+  UsedItem = nlist;
+  __FREE(usedProcess)
+  nlist.pList->countDown = TimeoutInit;
+  return 0;
 }
 
-INT CMemoryListCriticalSection::FreeMemoryList(ADDR nlist)
+INT CMemoryListLockFree::GetOneList(ADDR &nlist)
 {
-  __TRY
-    if (!DirectFree) nlist.pList->countDown = 2/*TIMEOUT_QUIT*/;
-    else __DO(FreeOneList(nlist))
-  __CATCH
+  ADDR  next;
+#ifdef _TESTCOUNT
+  __sync_fetch_and_add(&GetCount, 1);
+  __sync_fetch_and_add(&GetSuccessCount, 1);
+#endif // _TESTCOUNT
+
+  do {
+    nlist = FreeBufferStart;
+    next = FreeBufferStart.pList->nextList;
+    //    printf("before nlist,next: %llx,%llx\n", nlist.aLong, next.aLong);
+    if (next > MARK_MAX_INT) {                   // Have free
+      next.aLong = CmpExg(&FreeBufferStart.aLong, nlist.aLong, next.aLong);
+      //    printf("after nlist,next: %llx,%llx\n", nlist.aLong, next.aLong);
+    }
+    else {
+      nlist.pList = NULL;
+#ifdef _TESTCOUNT
+      __sync_fetch_and_add(&GetSuccessCount, -1);
+#endif // _TESTCOUNT
+      break;
+    }
+  }
+  while(next != nlist);
+  if (nlist.pList != NULL) __sync_fetch_and_add(&FreeNumber, -1);
+
+  return (nlist.pList == NULL);
+}
+
+INT CMemoryListLockFree::FreeOneList(ADDR nlist)
+{
+  printf("In free\n");
+  ADDR  next;
+#ifdef _TESTCOUNT
+  __sync_fetch_and_add(&FreeCount, 1);
+  __sync_fetch_and_add(&FreeSuccessCount, 1);
+#endif // _TESTCOUNT
+  do {
+    next = FreeBufferStart;
+    nlist.pList->nextList = FreeBufferStart;
+    nlist.aLong = CmpExg(&FreeBufferStart.aLong, next.aLong, nlist.aLong);
+  }
+  while (next != nlist);
+  __sync_fetch_and_add(&FreeNumber, 1);
+  return 0;
+}
+
+INT CMemoryListLockFree::AddToUsed(ADDR )//nlist)
+{
+  return 0;
+}
+
+int main(int, char**)
+{
+  ADDR nlist[250];
+  //  CMemoryListCriticalSection m;
+  CMemoryListLockFree m;
+
+  m.SetMemoryBuffer(10, 80, 64);
+  m.DisplayInfo();
+  for (int i=0; i<9; i++) {
+    m.GetMemoryList(nlist[i]);
+  }
+  m.DisplayInfo();
+  
+  for (int i=10; i<11; i++) {
+    m.GetMemoryList(nlist[i]);
+  }
+  m.DisplayInfo();
+  for (int i=6; i>3; i--) {
+    m.FreeMemoryList(nlist[i]);
+  }
+  m.DisplayInfo();
+  for (int i=20; i<25; i++) {
+    m.GetMemoryList(nlist[i]);
+  }
+  m.DisplayInfo();
+
+  return 0;
+}
+
+#ifdef _TESTCOUNT
+
+
+void CMemoryAlloc::DisplayInfo(void)
+{
+  printf("Total:%10lld, Free:%10lld\n", TotalNumber, FreeNumber);
+  printf("Get  :%10lld, Succ:%10lld\n", GetCount, GetSuccessCount);
+  printf("Free :%10lld, Succ:%10lld\n", FreeCount, FreeSuccessCount);
+  printf("MinFree:%8lld\n", MinFree);
+
+  volatile ADDR item;
+  printf("buffer start, end: %llx, %llx\n", FreeBufferStart.aLong, FreeBufferEnd.aLong); 
+  item.pList = RealBlock.pList;
+  for (int i=0; i<TotalNumber; i++) {
+    printf("%5d:%p, %p, %p,\n", i, item.pList, item.pList->nextList.pVoid, item.pList->usedList.pVoid);
+    usleep(10);
+    item.aLong += BorderSize;
+  }
 }
 
 /*
-#ifdef _TESTCOUNT
 void CMemoryAlloc::ResetCount()
 {
 	GetCount = GetSuccessCount = FreeCount = FreeSuccessCount = 0;
@@ -319,8 +432,9 @@ int main(int argc, TCHAR* argv[], TCHAR* envp[])
 // 	64bit		1:0.005;	2:0.021;	3:0.036;	4:0.041;	5:0.042;	6:0.056;	7:0.066;	8:0.078;
 // 	64bit WOW	1:0.009;	2:0.018;	3:0.034;	4:0.042;	5:0.053;	6:0.059;	7:0.072;	8:0.085;
 }
+*/
 
 #endif // _TESTCOUNT
 
-*/
+
 

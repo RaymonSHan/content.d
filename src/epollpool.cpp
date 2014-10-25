@@ -216,6 +216,7 @@ INT testreterr()
   __CATCH_END
 }
 
+/*
 int main (int, char**)
 {
   //  testreterr();
@@ -241,3 +242,4 @@ int main (int, char**)
   // the listen() add at last
   return (EXIT_SUCCESS);
 }
+*/

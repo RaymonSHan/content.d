@@ -34,12 +34,40 @@ BOOL inline operator == (const ADDR &one, const ADDR &two) {
   return (one.aLong == two.aLong);
 }
 
+BOOL inline operator != (const ADDR &one, const ADDR &two) {
+  return (one.aLong != two.aLong);
+}
+
+BOOL inline operator == (const ADDR &one, const void* &two) {
+  return (one.pVoid == two);
+}
+
+BOOL inline operator != (const ADDR &one, const void* &two) {
+  return (one.pVoid != two);
+}
+
+BOOL inline operator == (const ADDR &one, const INT &two) {
+  return (one.aLong == two);
+}
+
+BOOL inline operator != (const ADDR &one, const INT &two) {
+  return (one.aLong != two);
+}
+
 BOOL inline operator > (const ADDR &one, const INT &two) {
   return (one.aLong > two);
 }
 
+BOOL inline operator >= (const ADDR &one, const INT &two) {
+  return (one.aLong >= two);
+}
+
 BOOL inline operator < (const ADDR &one, const INT &two) {
   return (one.aLong < two);
+}
+
+BOOL inline operator <= (const ADDR &one, const INT &two) {
+  return (one.aLong <= two);
 }
 
 ADDR    getMemory(INT size, INT flag);
@@ -48,20 +76,20 @@ ADDR    getStack(void);
 class CMemoryAlloc
 {
 private:
-  ADDR  StartBlock;
+  //  ADDR  StartBlock;
   ADDR  RealBlock;
-  INT   BorderSize;                                             // byte border
+  INT   BorderSize;                                             // real byte size
   INT   TotalSize;                                              // Total memory size in byte
 protected:
   INT   TotalNumber;
   volatile INT                  FreeNumber;
   //  INT   m_ItemSaveRemain;
   ADDR  FreeBufferStart;
-  ADDR  FreeBufferEnd;
+  ADDR  FreeBufferEnd;                                          // used in CriticalSection
   ADDR  TotalBuffer;
 
   ADDR  UsedItem;
-  volatile HANDLE_LOCK          InUsedListProcess;
+  //  volatile HANDLE_LOCK          InUsedListProcess;
 
 public:
   INT   DirectFree;
@@ -79,7 +107,7 @@ public:
 #endif  // _TESTCOUNT
 
 public:
-  CMemoryAlloc(ADDR memstart);
+  CMemoryAlloc();
   ~CMemoryAlloc();
   void  SetListDetail(char *listname, INT directFree, INT timeout);
   INT   SetMemoryBuffer(INT number, INT size, INT border);
@@ -87,14 +115,18 @@ public:
 
   virtual INT GetOneList(ADDR &nlist) = 0;
   virtual INT FreeOneList(ADDR nlist) = 0;
+  virtual INT AddToUsed(ADDR nlist) = 0;
+  INT   GetMemoryList(ADDR &nlist);                             // For DirectFree mode, same as GetOneList
+  INT   FreeMemoryList(ADDR nlist);                             // For NON-Direct mode, only make a mark
 
   void  TimeoutContext(void);
-  void  DisplayContext();
+  void  DisplayContext(void);
   ADDR  SetBuffer(INT number, INT itemsize, INT bordersize);
   INT   GetNumber()             { return TotalNumber; };
   INT   GetFreeNumber()         { return FreeNumber; };
 
 #ifdef  _TESTCOUNT              // for test function, such a multithread!
+  void  DisplayInfo(void);
   //  void                          ResetCount();
   //  virtual void                  CheckEmptyList(void);
   //  int                           ThreadItem(void *lpParam);
@@ -106,15 +138,22 @@ class CMemoryListCriticalSection : public CMemoryAlloc
 {
 private:
   volatile HANDLE_LOCK          InProcess;
-  volatile HANDLE_LOCK          *pInGetProcess;
-  volatile HANDLE_LOCK          *pInFreeProcess;
+  volatile HANDLE_LOCK          usedProcess;
+
 
   virtual INT                   GetOneList(ADDR &nlist);
   virtual INT                   FreeOneList(ADDR nlist);
+  virtual INT                   AddToUsed(ADDR nlist);
 public:
-  CMemoryListCriticalSection(ADDR memstart);
-  INT   GetMemoryList(ADDR &nlist);                             // For DirectFree mode, same as GetOneList
-  INT   FreeMemoryList(ADDR mlist);                             // For NON-Direct mode, only make a mark
+  CMemoryListCriticalSection();
+};
+
+class CMemoryListLockFree: public CMemoryAlloc
+{
+private:
+  virtual INT                   GetOneList(ADDR &nlist);
+  virtual INT                   FreeOneList(ADDR nlist);
+  virtual INT                   AddToUsed(ADDR nlist);
 };
 
 class CListItem
