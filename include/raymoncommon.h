@@ -79,11 +79,11 @@ void    __MESSAGE(INT level, const char *_file, const char *_func, INT ret, cons
 #define NOT_IN_PROCESS          (INT)0xa0
 #define IN_PROCESS              (INT)0xa1
 
-#define CmpExg                  __sync_val_compare_and_swap
+#define CmpExg                  __sync_bool_compare_and_swap
 
-#define __LOCKp(lock)           while(CmpExg(lock, IN_PROCESS, NOT_IN_PROCESS) == IN_PROCESS);
+#define __LOCKp(lock)           while(!CmpExg(lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREEp(lock)           *lock = NOT_IN_PROCESS;
-#define __LOCK(lock)            while(CmpExg(&lock, IN_PROCESS, NOT_IN_PROCESS) == IN_PROCESS);
+#define __LOCK(lock)            while(!CmpExg(&lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREE(lock)            lock = NOT_IN_PROCESS;
 
 /*

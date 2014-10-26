@@ -128,19 +128,14 @@ public:
 
 #ifdef  _TESTCOUNT              // for test function, such a multithread!
   void  DisplayInfo(void);
-  //  void                          ResetCount();
-  //  virtual void                  CheckEmptyList(void);
-
-  //  void                          TestList(INT threadNumber, INT getNumber, INT fullTimes, BOOL wait=0);
 #endif  // _TESTCOUNT
 };
 
 class CMemoryListCriticalSection : public CMemoryAlloc
 {
 private:
-  volatile HANDLE_LOCK          InProcess;
-  volatile HANDLE_LOCK          usedProcess;
-
+  volatile HANDLE_LOCK          InProcess, usedProcess;
+  volatile HANDLE_LOCK          *pInProcess, *pusedProcess;
 
   virtual INT                   GetOneList(ADDR &nlist);
   virtual INT                   FreeOneList(ADDR nlist);
@@ -149,19 +144,15 @@ public:
   CMemoryListCriticalSection();
 };
 
-int                             ThreadItem(void *para);
-
 class CMemoryListLockFree: public CMemoryAlloc
 {
 private:
   virtual INT                   GetOneList(ADDR &nlist);
   virtual INT                   FreeOneList(ADDR nlist);
   virtual INT                   AddToUsed(ADDR nlist);
-public:
-  INT                   GetOneList2(ADDR &nlist);
-  INT                   FreeOneList2(ADDR nlist);
-
 };
+
+int                             ThreadItem(void *para);
 
 class CListItem
 {
