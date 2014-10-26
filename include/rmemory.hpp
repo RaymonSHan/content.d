@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#define MAP_FAIL                -1                              // lazy replace MAP_FAILED
+#define NUL                     0                               // lazy replace NULL
 #include "raymoncommon.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -13,13 +15,31 @@
 class   CListItem;
 class   CContextItem;
 
+#define MARK_FREE_END_          0x20
+#define MARK_USED_              0x10
 #define MARK_FREE_END           (CListItem*)(void*)0x20
 #define MARK_USED               (CListItem*)(void*)0x10
 
 // The item -> nextList is pointed to next item, but if the value less than MARK_MAX, it means some other
-#define MARK_MAX_INT	        0x100
+#define MARK_MAX_INT	        0x100ll
 #define MARK_MAX                (CListItem*)(void*)MARK_MAX_INT
 #define BUFFER_SIZE             16*1024*1024
+
+#define PAD_SIZE(p, pad, bord)			\
+  ((sizeof(p) + pad - 1) & (-1 * bord)) + bord
+#define PAD_INT(p, pad, bord)				\
+  p = ((p + pad -1) & (-1 * bord)) + bord
+#define PAD_ADDR(p, pad, bord)				\
+  p.aLong = ((p.aLong + pad -1) & (-1 * bord)) + bord
+
+#define ADDR_INT_SELF_OPERATION(op)			\
+  assignAddress& operator op (const INT &one) { this->aLong op one; return *this; };
+
+#define ADDR_PCHAR_SELF_OPERATION(op)					\
+  assignAddress& operator op (char *&one) { this->pChar op one; return *this; };
+
+#define ADDR_PVOID_SELF_OPERATION(op)					\
+  assignAddress& operator op (void *&one) { this->pVoid op one; return *this; };
 
 typedef union assignAddress
 {
@@ -28,47 +48,85 @@ typedef union assignAddress
   void  *pVoid;
   INT   *pLong;
   CListItem *pList;
+
+  ADDR_INT_SELF_OPERATION(=)
+  ADDR_INT_SELF_OPERATION(+=)
+  ADDR_INT_SELF_OPERATION(-=)
+  ADDR_INT_SELF_OPERATION(&=)
+  ADDR_INT_SELF_OPERATION(|=)
+
+  ADDR_PCHAR_SELF_OPERATION(=)
+  //   ADDR_PVOID_SELF_OPERATION(=)
+
+  // ADDR_PVOID_SELF_OPERATION
+  assignAddress& operator = (void *&one) { this->pVoid = one; return *this; };
+  assignAddress& operator = (CListItem *&one) { this->pList = one; return *this; };
 }ADDR;
 
-BOOL inline operator == (const ADDR &one, const ADDR &two) {
-  return (one.aLong == two.aLong);
-}
 
-BOOL inline operator != (const ADDR &one, const ADDR &two) {
-  return (one.aLong != two.aLong);
-}
+#define ADDR_ADDR_COMPARE(op)				\
+  BOOL inline operator op (ADDR &one, ADDR &two) {	\
+  return (one.aLong op two.aLong); }
+ADDR_ADDR_COMPARE(==)
+ADDR_ADDR_COMPARE(!=)
+ADDR_ADDR_COMPARE(>)
+ADDR_ADDR_COMPARE(>=)
+ADDR_ADDR_COMPARE(<)
+ADDR_ADDR_COMPARE(<=)
 
-BOOL inline operator == (const ADDR &one, const void* &two) {
-  return (one.pVoid == two);
-}
+#define ADDR_ADDR_OPERATION(op)				\
+  ADDR inline operator op (ADDR &one, ADDR &two) {	\
+  ADDR ret;						\
+  ret.aLong = one.aLong op two.aLong;  return ret; }
+ADDR_ADDR_OPERATION(+)
+ADDR_ADDR_OPERATION(-)
 
-BOOL inline operator != (const ADDR &one, const void* &two) {
-  return (one.pVoid != two);
-}
+#define ADDR_INT_COMPARE(op)				\
+  BOOL inline operator op (ADDR &one, const INT &two) {	\
+  return (one.aLong op two); }
+ADDR_INT_COMPARE(==)
+ADDR_INT_COMPARE(!=)
+ADDR_INT_COMPARE(>)
+ADDR_INT_COMPARE(>=)
+ADDR_INT_COMPARE(<)
+ADDR_INT_COMPARE(<=)
 
-BOOL inline operator == (const ADDR &one, const INT &two) {
-  return (one.aLong == two);
-}
+#define ADDR_INT_OPERATION(op)				\
+  ADDR inline operator op (ADDR &one, const INT &two) {	\
+  ADDR ret;						\
+  ret.aLong = one.aLong op two;  return ret; }
+ADDR_INT_OPERATION(+)
+ADDR_INT_OPERATION(-)
 
-BOOL inline operator != (const ADDR &one, const INT &two) {
-  return (one.aLong != two);
-}
+#define ADDR_PCHAR_COMPARE(op)				\
+  BOOL inline operator op (ADDR &one, char* &two) {	\
+  return (one.pChar op two); }
+ADDR_PCHAR_COMPARE(==)
+ADDR_PCHAR_COMPARE(!=)
+ADDR_PCHAR_COMPARE(>)
+ADDR_PCHAR_COMPARE(>=)
+ADDR_PCHAR_COMPARE(<)
+ADDR_PCHAR_COMPARE(<=)
 
-BOOL inline operator > (const ADDR &one, const INT &two) {
-  return (one.aLong > two);
-}
+#define ADDR_PVOID_COMPARE(op)				\
+  BOOL inline operator op (ADDR &one, const void* &two) {	\
+  return (one.pVoid op two); }
+ADDR_PVOID_COMPARE(==)
+ADDR_PVOID_COMPARE(!=)
+ADDR_PVOID_COMPARE(>)
+ADDR_PVOID_COMPARE(>=)
+ADDR_PVOID_COMPARE(<)
+ADDR_PVOID_COMPARE(<=)
 
-BOOL inline operator >= (const ADDR &one, const INT &two) {
-  return (one.aLong >= two);
-}
-
-BOOL inline operator < (const ADDR &one, const INT &two) {
-  return (one.aLong < two);
-}
-
-BOOL inline operator <= (const ADDR &one, const INT &two) {
-  return (one.aLong <= two);
-}
+#define ADDR_PLONG_COMPARE(op)				\
+  BOOL inline operator op (ADDR &one, INT* &two) {	\
+  return (one.pLong op two); }
+ADDR_PLONG_COMPARE(==)
+ADDR_PLONG_COMPARE(!=)
+ADDR_PLONG_COMPARE(>)
+ADDR_PLONG_COMPARE(>=)
+ADDR_PLONG_COMPARE(<)
+ADDR_PLONG_COMPARE(<=)
 
 ADDR    getMemory(INT size, INT flag);
 ADDR    getStack(void);
@@ -87,10 +145,9 @@ protected:
   ADDR  FreeBufferStart;
   ADDR  FreeBufferEnd;                                          // used in CriticalSection
   ADDR  TotalBuffer;
-
   ADDR  UsedItem;
-  //  volatile HANDLE_LOCK          InUsedListProcess;
-
+  volatile HANDLE_LOCK          InProcess, usedProcess;
+  volatile HANDLE_LOCK          *pInProcess, *pusedProcess;
 public:
   INT   DirectFree;
   INT   TimeoutInit;
@@ -134,14 +191,11 @@ public:
 class CMemoryListCriticalSection : public CMemoryAlloc
 {
 private:
-  volatile HANDLE_LOCK          InProcess, usedProcess;
-  volatile HANDLE_LOCK          *pInProcess, *pusedProcess;
-
   virtual INT                   GetOneList(ADDR &nlist);
   virtual INT                   FreeOneList(ADDR nlist);
+  inline void                   FreeListToTail(ADDR nlist);
+  inline void                   FreeListToHead(ADDR nlist);
   virtual INT                   AddToUsed(ADDR nlist);
-public:
-  CMemoryListCriticalSection();
 };
 
 class CMemoryListLockFree: public CMemoryAlloc
@@ -150,6 +204,29 @@ private:
   virtual INT                   GetOneList(ADDR &nlist);
   virtual INT                   FreeOneList(ADDR nlist);
   virtual INT                   AddToUsed(ADDR nlist);
+};
+
+typedef struct threadListInfo {
+  INT   maxSize;
+  INT   getSize;
+  ADDR  localArray;
+}threadListInfo;
+
+class CMemoryListArray: public CMemoryAlloc
+{
+private:
+  volatile INT nowThread;
+  ADDR  memoryArea;             // used for mmap
+  ADDR  memoryArrayStart;       // array start
+  ADDR  memoryArrayEnd;         // array end
+  INT   threadNum;
+  ADDR  threadArea;             // start of threadListInfo
+private:
+  virtual INT                   GetOneList(ADDR &nlist);
+  virtual INT                   FreeOneList(ADDR nlist);
+  virtual INT                   AddToUsed(ADDR nlist);
+public:
+  INT   SetThreadLocalArray(INT threadnum, INT maxsize, INT getsize);
 };
 
 int                             ThreadItem(void *para);
@@ -167,6 +244,10 @@ public:
   INT   listFlag;
 };
 
+#define NextList                pList->nextList
+#define UsedList                pList->usedList
+#define CountDown               pList->countDown
+#define ListFlag                plist->listFlag
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Used memory struct                                                                              //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
@@ -291,15 +372,5 @@ public:
 #define CLIENTADDR_(p)				__JOIN(p, Context->clientAddr)
 #define CLIENTADDR					CLIENTADDR_(m)
 
-
-#ifdef _TESTCOUNT
-typedef struct threadPara
-{
-	CMemoryAlloc*					pMemoryList;
-	MYINT							threadID;
-	MYINT							getnumber;
-	MYINT							fullnumber;
-}threadPara, *pthreadPara;
-void								TestListDemo(void);
 #endif _TESTCOUNT
 */

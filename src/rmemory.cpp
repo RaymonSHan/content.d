@@ -6,13 +6,21 @@
 volatile INT GlobalTime = 0;
 static ADDR isNULL = {0};
 
+#undef  HUGE_PAGE
+
+#ifdef  HUGE_PAGE
+#define SIZE_PAGE               SIZE_HUGE_PAGE
+#else   // HUGE_PAGE
+#define SIZE_PAGE               SIZE_NORMAL_PAGE
+#endif  // HUGE_PAGE
+
 ADDR getMemory(INT size, INT flag)
 {
   static ADDR totalMemoryStart = {SEG_START_STACK};
   ADDR p;
 
-  p.aLong = __sync_fetch_and_add(&(totalMemoryStart.aLong), size);
-  p.aLong = ((p.aLong - 1) & (-1*SIZE_NORMAL_PAGE)) + SIZE_NORMAL_PAGE;
+  PAD_INT(size, 0, SIZE_PAGE);
+  p = __sync_fetch_and_add(&(totalMemoryStart.aLong), size);
   p.pVoid = mmap (p.pVoid, size, PROT_READ | PROT_WRITE,
 		  MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | flag, -1, 0);
   return p;
@@ -25,11 +33,15 @@ ADDR getStack(void)
 
 CMemoryAlloc::CMemoryAlloc()
 { 
-  RealBlock.aLong = 0;
+  RealBlock = 0;
   BorderSize = TotalSize = 0;
 
-  TotalBuffer.aLong = UsedItem.aLong = FreeBufferStart.aLong = FreeBufferEnd.aLong = 0;
+  TotalBuffer = UsedItem = FreeBufferStart = FreeBufferEnd = 0;
   TotalNumber = FreeNumber = 0;
+
+  InProcess = usedProcess = NOT_IN_PROCESS;
+  pInProcess = &InProcess;
+  pusedProcess = &usedProcess;
 
 #ifdef _TESTCOUNT
   GetCount = GetSuccessCount = FreeCount = FreeSuccessCount = 0;
@@ -54,18 +66,18 @@ INT     CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border)
     BorderSize = ((size-1) / border + 1) * border;
     TotalSize = BorderSize * number;
     RealBlock = getMemory(TotalSize, 0);
-    __DO(RealBlock.pVoid == MAP_FAILED);
+    __DO(RealBlock == MAP_FAIL);
 
     BufferSize = size - sizeof(CListItem);
     thisItem = nextItem = RealBlock;
     for (i=0; i<number-1; i++) {
-      nextItem.aLong += BorderSize;
-      thisItem.pList->nextList = nextItem;
+      nextItem += BorderSize;
+      thisItem.NextList = nextItem;
       thisItem = nextItem;
     }
     FreeBufferStart = TotalBuffer = RealBlock;
     FreeBufferEnd = nextItem;
-    nextItem.pList->nextList.pList = MARK_FREE_END;
+    nextItem.NextList = MARK_FREE_END_;
     
     TotalNumber = FreeNumber = number;
 #ifdef _TESTCOUNT
@@ -94,8 +106,8 @@ void CMemoryAlloc::DisplayContext(void)
   INT num = TotalNumber + 3;
 
   while (mList.aLong && num) {
-    printf("0x%p:%lld->", mList.pList, mList.pList->countDown);
-    mList = mList.pList->usedList;
+    printf("0x%p:%lld->", mList.pList, mList.CountDown);
+    mList = mList.UsedList;
     num--;
   }
   if (UsedItem.aLong) printf("\n");
@@ -106,7 +118,7 @@ INT CMemoryAlloc::GetMemoryList(ADDR &nlist)
 {
   __TRY
     __DO(GetOneList(nlist))
-    nlist.pList->nextList.pList = MARK_USED;
+    nlist.NextList = MARK_USED_;
     if (!DirectFree) AddToUsed(nlist);
   __CATCH
 }
@@ -114,16 +126,9 @@ INT CMemoryAlloc::GetMemoryList(ADDR &nlist)
 INT CMemoryAlloc::FreeMemoryList(ADDR nlist)
 {
   __TRY
-    if (!DirectFree) nlist.pList->countDown = 2;
+    if (!DirectFree) nlist.CountDown = 2;
     else __DO(FreeOneList(nlist))
   __CATCH
-}
-
-CMemoryListCriticalSection::CMemoryListCriticalSection()
-{
-  InProcess = usedProcess = NOT_IN_PROCESS;
-  pInProcess = &InProcess;
-  pusedProcess = &usedProcess;
 }
 
 INT CMemoryListCriticalSection::GetOneList(ADDR &nlist)
@@ -134,21 +139,20 @@ INT CMemoryListCriticalSection::GetOneList(ADDR &nlist)
 #endif // _TESTCOUNT
   nlist = FreeBufferStart;                                      // Get the first free item
 
-  if (nlist.pList->nextList > MARK_MAX_INT) {                   // Have free
-    FreeBufferStart=nlist.pList->nextList;
+  if (nlist.NextList > MARK_MAX_INT) {                   // Have free
+    FreeBufferStart = nlist.NextList;
     FreeNumber--;
 #ifdef _TESTCOUNT
-    if (FreeNumber<MinFree) MinFree = FreeNumber;
+    if (FreeNumber < MinFree) MinFree = FreeNumber;
     GetSuccessCount++;
 #endif // _TESTCOUNT
   }
-  else nlist.pList = NULL;
+  else nlist = NUL;
 
   __FREEp(pInProcess)
-  return (nlist.pList == NULL);
+  return (nlist == NUL);
 }
 
-/* this add to tail
 INT CMemoryListCriticalSection::FreeOneList(ADDR nlist)
 {
   __TRY
@@ -157,38 +161,11 @@ INT CMemoryListCriticalSection::FreeOneList(ADDR nlist)
 #ifdef _TESTCOUNT
     FreeCount++;
 #endif // _TESTCOUNT
-    __DO_ ( (nlist < MARK_MAX_INT || nlist.pList->nextList.pList != MARK_USED),
-	    "FreeList Twice %p\n", nlist.pList)
-    nlist.pList->nextList.pList = MARK_FREE_END;
-    FreeBufferEnd.pList->nextList = nlist;
-    FreeBufferEnd = nlist;
-#ifdef _TESTCOUNT
-    FreeSuccessCount++;
-#endif // _TESTCOUNT
-    FreeNumber++;
-
-    __FREEp(pInProcess)
-  __CATCH_BEGIN
-    __FREEp(pInProcess)
- __CATCH_END
-}
-*/
-
-/* this add to head*/
-INT CMemoryListCriticalSection::FreeOneList(ADDR nlist)
-{
-  __TRY
-    __LOCKp(pInProcess)
-
-#ifdef _TESTCOUNT
-    FreeCount++;
-#endif // _TESTCOUNT
-
-    __DO_ ( (nlist < MARK_MAX_INT || nlist.pList->nextList.pList != MARK_USED),
+    __DO_ ( (nlist < MARK_MAX_INT || nlist.NextList != MARK_USED_),
 	    "FreeList Twice %p\n", nlist.pList);
-    nlist.pList->nextList = FreeBufferStart;
-    FreeBufferStart = nlist;
-
+    //FreeListToTail(nlist);
+    // or
+    FreeListToHead(nlist);
 #ifdef _TESTCOUNT
     FreeSuccessCount++;
 #endif // _TESTCOUNT
@@ -198,15 +175,28 @@ INT CMemoryListCriticalSection::FreeOneList(ADDR nlist)
   __CATCH_BEGIN
     __FREEp(pInProcess)
  __CATCH_END
+}
+
+inline void CMemoryListCriticalSection::FreeListToTail(ADDR nlist)
+{
+    nlist.NextList = MARK_FREE_END_;
+    FreeBufferEnd.NextList = nlist;
+    FreeBufferEnd = nlist;
+}
+
+inline void CMemoryListCriticalSection::FreeListToHead(ADDR nlist)
+{
+    nlist.NextList = FreeBufferStart;
+    FreeBufferStart = nlist;
 }
 
 INT CMemoryListCriticalSection::AddToUsed(ADDR nlist)
 {
   __LOCKp(pusedProcess)
-  nlist.pList->usedList = UsedItem;
+  nlist.UsedList = UsedItem;
   UsedItem = nlist;
   __FREEp(pusedProcess)
-  nlist.pList->countDown = TimeoutInit;
+  nlist.CountDown = TimeoutInit;
   return 0;
 }
 
@@ -280,6 +270,36 @@ INT CMemoryListLockFree::AddToUsed(ADDR )//nlist)
   return 0;
 }
 
+INT CMemoryListArray::GetOneList(ADDR &nlist)
+{
+}
+
+INT CMemoryListArray::FreeOneList(ADDR nlist)
+{
+}
+
+INT CMemoryListArray::AddToUsed(ADDR nlist)
+{
+  return 0;
+}
+
+INT CMemoryListArray::SetThreadLocalArray(INT threadnum, INT maxsize, INT getsize)
+{
+  INT  memorySize = 0;
+
+  __TRY
+    memorySize = PAD_SIZE(threadListInfo, SIZE_SMALL_PAD, SIZE_CACHE) * threadnum;
+    memorySize += (TotalNumber + (maxsize + SIZE_SMALL_PAD)*threadnum) * sizeof(ADDR);
+
+    nowThread = 0;
+    memoryArea = getMemory(memorySize, 0);
+    __DO_(memoryArea == MAP_FAIL, "Could NOT mmap memory");
+    memoryArrayStart = memoryArea;
+    memoryArrayEnd =  memoryArea + (TotalNumber + 1) * sizeof(ADDR);
+
+  __CATCH
+  return 0;
+}
 
 #include <sched.h>
 #include <sys/wait.h>
@@ -325,7 +345,7 @@ void CMemoryAlloc::DisplayInfo(void)
   }
 }
 
-#define TEST_TIMES 10000000
+#define TEST_TIMES 1000000
 #define TEST_ITMES 3
 
 int ThreadItem(void *para)

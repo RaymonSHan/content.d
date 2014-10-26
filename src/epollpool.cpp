@@ -41,7 +41,6 @@ int RWorkThread::RpollFunc(void)
   return 3;
 }
 
-
 int RpollGlobalApp::SetRpollStatue(int oldstatue, int newstatue)
 {
   return __sync_val_compare_and_swap
