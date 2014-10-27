@@ -15,10 +15,10 @@
 class   CListItem;
 class   CContextItem;
 
-#define MARK_FREE_END_          0x20
-#define MARK_USED_              0x10
-#define MARK_FREE_END           (CListItem*)(void*)0x20
-#define MARK_USED               (CListItem*)(void*)0x10
+#define MARK_FREE_END           0x20
+#define MARK_USED               0x10
+//#define MARK_FREE_END           (CListItem*)(void*)0x20
+//#define MARK_USED               (CListItem*)(void*)0x10
 
 // The item -> nextList is pointed to next item, but if the value less than MARK_MAX, it means some other
 #define MARK_MAX_INT	        0x100ll
@@ -28,9 +28,9 @@ class   CContextItem;
 #define PAD_SIZE(p, pad, bord)			\
   ((sizeof(p) + pad - 1) & (-1 * bord)) + bord
 #define PAD_INT(p, pad, bord)				\
-  p = ((p + pad -1) & (-1 * bord)) + bord
+  ((p + pad - 1) & (-1 * bord)) + bord
 #define PAD_ADDR(p, pad, bord)				\
-  p.aLong = ((p.aLong + pad -1) & (-1 * bord)) + bord
+  ((p.aLong + pad - 1) & (-1 * bord)) + bord
 
 #define ADDR_INT_SELF_OPERATION(op)			\
   assignAddress& operator op (const INT &one) { this->aLong op one; return *this; };
@@ -48,6 +48,7 @@ typedef union assignAddress
   void  *pVoid;
   INT   *pLong;
   CListItem *pList;
+  assignAddress *pAddr;
 
   ADDR_INT_SELF_OPERATION(=)
   ADDR_INT_SELF_OPERATION(+=)
@@ -62,7 +63,6 @@ typedef union assignAddress
   assignAddress& operator = (void *&one) { this->pVoid = one; return *this; };
   assignAddress& operator = (CListItem *&one) { this->pList = one; return *this; };
 }ADDR;
-
 
 #define ADDR_ADDR_COMPARE(op)				\
   BOOL inline operator op (ADDR &one, ADDR &two) {	\
@@ -97,6 +97,14 @@ ADDR_INT_COMPARE(<=)
   ret.aLong = one.aLong op two;  return ret; }
 ADDR_INT_OPERATION(+)
 ADDR_INT_OPERATION(-)
+ADDR_INT_OPERATION(&)
+ADDR_INT_OPERATION(|)
+
+#define ADDR_INT_OPERATION2(op)				\
+  INT inline operator op (ADDR &one, const INT &two) {	\
+    return one.aLong op two; }
+ADDR_INT_OPERATION2(*)
+ADDR_INT_OPERATION2(/)
 
 #define ADDR_PCHAR_COMPARE(op)				\
   BOOL inline operator op (ADDR &one, char* &two) {	\
@@ -210,6 +218,7 @@ typedef struct threadListInfo {
   INT   maxSize;
   INT   getSize;
   ADDR  localArray;
+  ADDR  freeLocalStart;
 }threadListInfo;
 
 class CMemoryListArray: public CMemoryAlloc
@@ -218,16 +227,26 @@ private:
   volatile INT nowThread;
   ADDR  memoryArea;             // used for mmap
   ADDR  memoryArrayStart;       // array start
+  ADDR  memoryArrayFree;
   ADDR  memoryArrayEnd;         // array end
   INT   threadNum;
   ADDR  threadArea;             // start of threadListInfo
+  INT   threadAreaSize;         // pad sizeof(threadListInfo)
+  INT   threadArraySize;        // local array size
 private:
   virtual INT                   GetOneList(ADDR &nlist);
   virtual INT                   FreeOneList(ADDR nlist);
   virtual INT                   AddToUsed(ADDR nlist);
+
 public:
+  INT   GetListGroup(ADDR &groupbegin, INT number);
+  INT   FreeListGroup(ADDR &groupbegin, INT number);
   INT   SetThreadLocalArray(INT threadnum, INT maxsize, INT getsize);
+  INT   GetThreadArea(ADDR &id);
+
+  void DisplayArray(void);
 };
+
 
 int                             ThreadItem(void *para);
 
@@ -248,6 +267,13 @@ public:
 #define UsedList                pList->usedList
 #define CountDown               pList->countDown
 #define ListFlag                plist->listFlag
+
+
+typedef struct perThreadInfo
+{
+  threadListInfo *memoryListInfo;
+}perThreadInfo;
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Used memory struct                                                                              //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
