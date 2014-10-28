@@ -5,8 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-#define MAP_FAIL                -1                              // lazy replace MAP_FAILED
-#define NUL                     0                               // lazy replace NULL
 #include "raymoncommon.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,6 +22,29 @@ class   CContextItem;
 #define MARK_MAX_INT	        0x100ll
 #define MARK_MAX                (CListItem*)(void*)MARK_MAX_INT
 #define BUFFER_SIZE             16*1024*1024
+
+struct  threadMemoryInfo;
+typedef struct perThreadInfo
+{
+  threadMemoryInfo *memoryListInfo;
+}perThreadInfo;
+
+#define OFFSET_MEMORYLIST       0
+
+#define setThreadInfo(info, off)					\
+  asm volatile ("movq %%rsp, %%rax;"					\
+		"andq %2, %%rax;"					\
+		"addq %1, %%rax;"					\
+		"movq %0, (%%rax);"					\
+		: : "b"(info), "i"(off), "i"(NEG_SIZE_THREAD_STACK));
+
+#define getThreadInfo(info, off)			\
+  asm volatile ("movq %%rsp, %%rax;"			\
+		"andq %2, %%rax;"			\
+		"addq %1, %%rax;"			\
+		"movq (%%rax), %0;"			\
+		: "=b" (info)				\
+		: "i" (off), "i"(NEG_SIZE_THREAD_STACK));
 
 #define PAD_SIZE(p, pad, bord)			\
   ((sizeof(p) + pad - 1) & (-1 * bord)) + bord
@@ -214,11 +235,12 @@ private:
   virtual INT                   AddToUsed(ADDR nlist);
 };
 
-typedef struct threadListInfo {
+typedef struct threadMemoryInfo {
   INT   maxSize;
   INT   getSize;
-  ADDR  localArray;
+  ADDR  localArrayStart;
   ADDR  freeLocalStart;
+  ADDR  localArrayEnd;
 }threadListInfo;
 
 class CMemoryListArray: public CMemoryAlloc
@@ -242,9 +264,11 @@ public:
   INT   GetListGroup(ADDR &groupbegin, INT number);
   INT   FreeListGroup(ADDR &groupbegin, INT number);
   INT   SetThreadLocalArray(INT threadnum, INT maxsize, INT getsize);
-  INT   GetThreadArea(ADDR &id);
+  INT   SetThreadArea();
 
-  void DisplayArray(void);
+#ifdef  _TESTCOUNT              // for test function, such a multithread!
+  void  DisplayArray(void);
+#endif  // _TESTCOUNT
 };
 
 
@@ -269,10 +293,7 @@ public:
 #define ListFlag                plist->listFlag
 
 
-typedef struct perThreadInfo
-{
-  threadListInfo *memoryListInfo;
-}perThreadInfo;
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Used memory struct                                                                              //

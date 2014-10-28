@@ -1,6 +1,9 @@
 
 #include   <stdarg.h>
 
+#define MAP_FAIL                -1                              // lazy replace MAP_FAILED
+#define NUL                     0                               // lazy replace NULL
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Common const                                                                                    //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
@@ -12,11 +15,13 @@
 #define SIZE_HUGE_PAGE          (0x01LL << 21)                  // 2M
 #define SIZE_THREAD_STACK       (0x01LL << 24)                  // 16M
 
+#define NEG_SIZE_THREAD_STACK   (-1*SIZE_THREAD_STACK)
 #define SIZE_SMALL_PAD          8
 
 #define INT			long long int                   // basic type
 #define BOOL                    bool
 #define HANDLE_LOCK             long long int			//
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error control                                                                                   //

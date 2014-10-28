@@ -1,5 +1,5 @@
 
-#define _TESTCOUNT
+//#define _TESTCOUNT
 #include <string.h>
 #include <unistd.h>
 #include "../include/rmemory.hpp"
@@ -31,7 +31,7 @@ ADDR getStack(void)
 {
   ADDR  stack = getMemory(SIZE_THREAD_STACK, MAP_GROWSDOWN);
   if (stack.aLong & (SIZE_THREAD_STACK - 1)) 
-    stack = NUL;
+    stack = MAP_FAIL;
   return stack;
 }
 
@@ -276,21 +276,43 @@ INT CMemoryListLockFree::AddToUsed(ADDR)// nlist)
 
 INT CMemoryListArray::GetOneList(ADDR &nlist)
 {
-  ADDR stack;
-  perThreadInfo *pinfo;
-  threadListInfo *minfo;
+  threadMemoryInfo *minfo;
+  getThreadInfo(minfo, OFFSET_MEMORYLIST);
 
-  asm ("movq %%rsp, %0;" : "=r" ( stack ));
-  stack &= (-1 * SIZE_THREAD_STACK);
-  pinfo = (perThreadInfo*)stack.pVoid;
-  minfo = pinfo->memoryListInfo;
-  printf("in get %p\n", minfo);
-  exit(0);
-  return 1;
+  __TRY
+#ifdef _TESTCOUNT
+  __sync_fetch_and_add(&GetCount, 1);
+#endif // _TESTCOUNT
+    if (minfo->freeLocalStart >= minfo->localArrayEnd) {
+      GetListGroup(minfo->freeLocalStart, minfo->getSize);
+    }
+    __DO(minfo->freeLocalStart >= minfo->localArrayEnd);
+    nlist = *(minfo->freeLocalStart.pAddr);
+    minfo->freeLocalStart += sizeof(ADDR);
+#ifdef _TESTCOUNT
+  __sync_fetch_and_add(&GetSuccessCount, 1);
+#endif // _TESTCOUNT
+  __CATCH
+    //  printf("%p\n", nlist.pVoid);
 }
 
 INT CMemoryListArray::FreeOneList(ADDR nlist)
 {
+  threadMemoryInfo *minfo;
+  getThreadInfo(minfo, OFFSET_MEMORYLIST);
+
+  __TRY
+#ifdef _TESTCOUNT
+  __sync_fetch_and_add(&FreeCount, 1);
+  __sync_fetch_and_add(&FreeSuccessCount, 1);
+#endif // _TESTCOUNT
+    if (minfo->freeLocalStart <= minfo->localArrayStart) {
+      FreeListGroup(minfo->freeLocalStart, minfo->getSize);
+    }
+    minfo->freeLocalStart -= sizeof(ADDR);
+    *(minfo->freeLocalStart.pAddr) = nlist;
+  __CATCH
+
   return 0;
 }
 
@@ -304,7 +326,7 @@ INT CMemoryListArray::SetThreadLocalArray(INT threadnum, INT maxsize, INT getsiz
   INT   memorySize = 0;
   ADDR  memoryarray, memoryarraylist;
   ADDR  threadarray, threadarea;
-  ADDR  threadfreestart, threadfreeend;
+  ADDR  threadfreestart;
   threadListInfo **info = (threadListInfo**)&(threadarea);
   INT   i;
   BOOL  isOK;
@@ -344,14 +366,14 @@ INT CMemoryListArray::SetThreadLocalArray(INT threadnum, INT maxsize, INT getsiz
     for (i=0; i<threadnum; i++) {
       (*info)->maxSize = maxsize;
       (*info)->getSize = getsize;
-      (*info)->localArray = threadarray;
+      (*info)->localArrayStart = threadarray;
       (*info)->freeLocalStart = threadfreestart =	\
 	threadarray + (maxsize-getsize)*sizeof(ADDR);
-      threadfreeend = threadarray + (maxsize-1)*sizeof(ADDR);
+      (*info)->localArrayEnd = threadarray + (maxsize-1)*sizeof(ADDR);
       // Init thread local array
       memcpy (threadfreestart.pVoid, memoryArrayFree.pVoid, getsize*sizeof(ADDR));
       memoryArrayFree += getsize*sizeof(ADDR);
-      (*threadfreeend.pAddr).NextList = MARK_FREE_END;
+      //      (*threadfreeend.pAddr).NextList = MARK_FREE_END;
 
       threadarea += threadAreaSize;
       threadarray += threadArraySize;
@@ -360,23 +382,16 @@ INT CMemoryListArray::SetThreadLocalArray(INT threadnum, INT maxsize, INT getsiz
   __CATCH
   return 0;
 }
-
-INT CMemoryListArray::GetThreadArea(ADDR &addr)
+ADDR t1, t2, t3, t4;
+INT CMemoryListArray::SetThreadArea()
 {
-  INT id;
-  ADDR stack;
-  perThreadInfo *pinfo;
+  INT   id;
+
   __TRY
-    addr = NUL;
     id = __sync_fetch_and_add(&nowThread, 1);
     __DO(id >= threadNum);
-    addr = threadArea + id * threadAreaSize;
-
-    asm ("movq %%rsp, %0;" : "=r" ( stack ));
-    stack &= (-1 * SIZE_THREAD_STACK);
-    pinfo = (perThreadInfo*)stack.pVoid;
-    pinfo->memoryListInfo = (threadListInfo*)addr.pVoid;
-
+    
+    setThreadInfo(threadArea + id * threadAreaSize, OFFSET_MEMORYLIST );
   __CATCH
 }
 
@@ -418,8 +433,8 @@ INT CMemoryListArray::FreeListGroup(ADDR &groupbegin, INT number)
 void displaylocal(threadListInfo* info)
 {
   printf("%lld,%p, %p,%p\n", info->maxSize, info->freeLocalStart.pVoid,
-	 info->localArray.NextList.pVoid, info->freeLocalStart.NextList.pVoid);
-  ADDR list = info->localArray;
+	 info->localArrayStart.pVoid, info->localArrayEnd.pVoid);
+  ADDR list = info->localArrayStart;
   for (int i=0; i<info->maxSize; i++) {
     if (list.pAddr->pVoid)
       printf("%p, %p, %p\n", list.pVoid, list.pAddr->pVoid, list.pAddr->NextList.pVoid);
@@ -433,9 +448,10 @@ void displaylocal(threadListInfo* info)
 #include <sys/wait.h>
 #define THREADS 2
 
+#ifdef  _TESTCOUNT
 void CMemoryListArray::DisplayArray(void)
 {
-  INT i,j;
+  INT i;
   printf("Array Start:%p, Free:%p, End%p\n", memoryArrayStart.pVoid, memoryArrayFree.pVoid, memoryArrayEnd.pVoid);
   ADDR arr = memoryArrayStart;
   threadListInfo** info = (threadListInfo**) &arr;
@@ -450,6 +466,7 @@ void CMemoryListArray::DisplayArray(void)
   }
   printf("\n");
 }
+#endif  // _TESTCOUNT
 
 int main(int, char**)
 {
@@ -459,7 +476,7 @@ int main(int, char**)
   //CMemoryListLockFree m;
   int status;
  
-  m.SetMemoryBuffer(10, 80, 64);
+  m.SetMemoryBuffer(20, 80, 64);
   m.SetThreadLocalArray(THREADS, 4, 2);
 
   for (int i=0; i<THREADS; i++) {
@@ -467,9 +484,35 @@ int main(int, char**)
     clone (&ThreadItem, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
   }
   for (int i=0; i<THREADS; i++) waitpid(-1, &status, __WCLONE);
+
+#ifdef  _TESTCOUNT              // for test function, such a multithread!
   m.DisplayArray();
   m.DisplayInfo();
-  return 0;
+#endif  // _TESTCOUNT
+ return 0;
+}
+
+
+#define TEST_TIMES 10000000
+#define TEST_ITMES 3
+
+int ThreadItem(void *para)
+{
+  ADDR item[TEST_ITMES+2];
+  CMemoryAlloc *cmem = (CMemoryAlloc*) para;
+  CMemoryListArray *clist = (CMemoryListArray*) para;
+
+  __TRY
+    __DO_(clist->SetThreadArea(), "Too many thread than setting");
+   for (int i=0; i<TEST_TIMES; i++) {
+      for (int j=0; j<TEST_ITMES; j++) 
+	if (cmem->GetMemoryList(item[j])) item[j]=0;
+      //      printf("%p,%p,%p\n", item[0].pVoid, item[1].pVoid, item[2].pVoid);
+      //      exit(0);
+      for (int j=0; j<TEST_ITMES; j++) 
+	if (item[j].aLong != 0) cmem->FreeMemoryList(item[j]);
+    }
+  __CATCH
 }
 
 #ifdef _TESTCOUNT
@@ -493,26 +536,6 @@ void CMemoryAlloc::DisplayInfo(void)
   }
 }
 
-#define TEST_TIMES 1000000
-#define TEST_ITMES 3
-
-int ThreadItem(void *para)
-{
-  ADDR memoryThreadArea;
-  ADDR item[TEST_ITMES+2];
-  CMemoryAlloc *cmem = (CMemoryAlloc*) para;
-  CMemoryListArray *clist = (CMemoryListArray*) para;
-
-  __TRY
-    __DO_(clist->GetThreadArea(memoryThreadArea), "Too many thread than setting");
-    for (int i=0; i<TEST_TIMES; i++) {
-      for (int j=0; j<TEST_ITMES; j++) 
-	cmem->GetMemoryList(item[j]);
-      for (int j=0; j<TEST_ITMES; j++) 
-	if (item[j].aLong != 0) cmem->FreeMemoryList(item[j]);
-    }
-  __CATCH
-}
 
 #endif // _TESTCOUNT
 
@@ -522,4 +545,6 @@ int ThreadItem(void *para)
 60M times 9.2 2thread1cpu lockfree, 11.2 2thread2cpu lockfree, 3.4*2 1thread lockfree
 60M times 5.9 2thread2cpu semi, 1.0*2 1thread semi
 60M times 6.3 2thread2cpu semi add head, 1.1*2 1thread semiadd head
+60M times 4.0 2thread2cpu localarray, 1.1 2thread2cpu localarray without add count
+this is the best way i have found, about 30ns per Get/Free for one cpu
  */
