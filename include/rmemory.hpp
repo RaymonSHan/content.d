@@ -16,18 +16,20 @@ class   CContextItem;
 #define MARK_USED_END           0x30
 #define MARK_FREE_END           0x20
 #define MARK_USED               0x10
-//#define MARK_FREE_END           (CListItem*)(void*)0x20
-//#define MARK_USED               (CListItem*)(void*)0x10
 
 // The item -> nextList is pointed to next item, but if the value less than MARK_MAX, it means some other
 #define MARK_MAX_INT	        0x100ll
 #define MARK_MAX                (CListItem*)(void*)MARK_MAX_INT
 #define BUFFER_SIZE             16*1024*1024
 
+#define TIMEOUT_TCP             20ll
+#define TIMEOUT_INFINITE        0xffffffffll
+#define TIMEOUT_QUIT            2ll
+
 struct  threadMemoryInfo;
 typedef struct perThreadInfo
 {
-  threadMemoryInfo *memoryListInfo;
+  threadMemoryInfo              *memoryListInfo;
 }perThreadInfo;
 
 #define OFFSET_MEMORYLIST       0
@@ -164,14 +166,12 @@ ADDR    getStack(void);
 class CMemoryAlloc
 {
 private:
-  //  ADDR  StartBlock;
   ADDR  RealBlock;
   INT   BorderSize;                                             // real byte size
   INT   TotalSize;                                              // Total memory size in byte
 protected:
   INT   TotalNumber;
   volatile INT                  FreeNumber;
-  //  INT   m_ItemSaveRemain;
   ADDR  FreeBufferStart;
   ADDR  FreeBufferEnd;                                          // used in CriticalSection
   ADDR  TotalBuffer;
@@ -191,7 +191,6 @@ public:
 
   INT   FreeLoop, GetLoop, GetFail;
   INT   hStart;
-
 #endif  // _TESTCOUNT
 
 public:
@@ -207,7 +206,7 @@ public:
   INT   GetMemoryList(ADDR &nlist);                             // For DirectFree mode, same as GetOneList
   INT   FreeMemoryList(ADDR nlist);                             // For NON-Direct mode, only make a mark
 
-  void  TimeoutContext(void);
+  void  TimeoutContext(ADDR usedStart);
   void  DisplayContext(void);
   ADDR  SetBuffer(INT number, INT itemsize, INT bordersize);
   INT   GetNumber()             { return TotalNumber; };

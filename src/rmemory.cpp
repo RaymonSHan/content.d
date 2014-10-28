@@ -77,6 +77,7 @@ INT     CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border)
     for (i=0; i<number-1; i++) {
       nextItem += BorderSize;
       thisItem.NextList = nextItem;
+      thisItem.UsedList = MARK_USED_END;
       thisItem = nextItem;
     }
     FreeBufferStart = TotalBuffer = RealBlock;
@@ -183,24 +184,24 @@ INT CMemoryListCriticalSection::FreeOneList(ADDR nlist)
 
 inline void CMemoryListCriticalSection::FreeListToTail(ADDR nlist)
 {
-    nlist.NextList = MARK_FREE_END;
-    FreeBufferEnd.NextList = nlist;
-    FreeBufferEnd = nlist;
+  nlist.NextList = MARK_FREE_END;
+  FreeBufferEnd.NextList = nlist;
+  FreeBufferEnd = nlist;
 }
 
 inline void CMemoryListCriticalSection::FreeListToHead(ADDR nlist)
 {
-    nlist.NextList = FreeBufferStart;
-    FreeBufferStart = nlist;
+  nlist.NextList = FreeBufferStart;
+  FreeBufferStart = nlist;
 }
 
 INT CMemoryListCriticalSection::AddToUsed(ADDR nlist)
 {
+  nlist.CountDown = TimeoutInit;
   __LOCKp(pusedProcess)
   nlist.UsedList = UsedItem;
   UsedItem = nlist;
   __FREEp(pusedProcess)
-  nlist.CountDown = TimeoutInit;
   return 0;
 }
 
@@ -284,18 +285,15 @@ INT CMemoryListArray::GetOneList(ADDR &nlist)
     __sync_fetch_and_add(&GetCount, 1);
 #endif // _TESTCOUNT
     if (minfo->freeLocalStart > minfo->localArrayEnd) {
-  //    if (minfo->freeLocalStart >= minfo->localArrayEnd) {
       GetListGroup(minfo->freeLocalStart, minfo->getSize);
     }
     __DO(minfo->freeLocalStart > minfo->localArrayEnd);
-//   __DO(minfo->freeLocalStart >= minfo->localArrayEnd);
     nlist = *(minfo->freeLocalStart.pAddr);
     minfo->freeLocalStart += sizeof(ADDR);
 #ifdef _TESTCOUNT
   __sync_fetch_and_add(&GetSuccessCount, 1);
 #endif // _TESTCOUNT
   __CATCH
-    //  printf("%p\n", nlist.pVoid);
 }
 
 INT CMemoryListArray::FreeOneList(ADDR nlist)
@@ -324,10 +322,17 @@ INT CMemoryListArray::FreeOneList(ADDR nlist)
   return 0;
 }
 
-INT CMemoryListArray::AddToUsed(ADDR)// nlist)
+// need NOT lock, schedule thread will NOT change usedLocalStart, 
+// and NOT remove first node in UsedList, even countdowned.
+INT CMemoryListArray::AddToUsed(ADDR nlist)
 {
   threadMemoryInfo *minfo;
   getThreadInfo(minfo, OFFSET_MEMORYLIST);
+
+  nlist.UsedList = minfo->usedLocalStart;
+  nlist.CountDown = TimeoutInit;
+  minfo->usedLocalStart = nlist;
+
   return 0;
 }
 
@@ -441,6 +446,45 @@ INT CMemoryListArray::FreeListGroup(ADDR &groupbegin, INT number)
   __CATCH
 }
 
+// process from CMemoryAlloc::UsedItem or threadMemoryInfo::usedListStart
+// it will not change the in para, and do NOT remove first node even countdowned.
+void CMemoryAlloc::TimeoutContext(ADDR usedStart)
+{
+  CListItem **ppContext = 0, *doContext = 0;
+  static volatile INT inTimeout = 0;
+
+  if (inTimeout) return;        // This function is NON-REENTRY
+  inTimeout = 1;
+  if (UsedItem) {
+// DisplayContext();
+//DEBUG_MESSAGE(MODULE_MEMORY, MESSAGE_STATUS, "(%x)", UsedItem);
+    ppContext = &((CListItem*)UsedItem);
+    while (*ppContext) {
+      if ( ((*ppContext)->countDown < TIMEOUT_INFINITE) && 
+	   ( !((*ppContext)->countDown--) ) ) {	
+	while ( InterCmpExg(&InUsedListProcess, MARK_IN_PROCESS, MARK_NOT_IN_PROCESS)
+		== MARK_IN_PROCESS );					//
+	doContext = (*ppContext);
+	(*ppContext) = (CListItem*)((*ppContext)->usedList);
+	InUsedListProcess = MARK_NOT_IN_PROCESS; // Remove the item from list for countdown
+	if ( ((doContext->ListFlag & (FLAG_IS_CONTEXT | FLAG_LATER_CLOSE)) 
+	      == FLAG_IS_CONTEXT) && (doContext->BHandle) ) {
+	  ProFunc(doContext->PProtocol, fPostClose)
+	    ((CContextItem*)doContext, isNULL, 0, 0);
+// 					__asm int 3	
+// 					__asm int 3	
+	}
+	doContext->countDown = 0;
+	doContext->usedList = 0;
+	FreeOneList(doContext);
+      }
+      if (*ppContext) ppContext = (CListItem**)(&((*ppContext)->usedList));
+    }
+  }
+  inTimeout = 0;
+  return;
+}
+
 void displaylocal(threadListInfo* info)
 {
   printf("%lld,%p, %p,%p\n", info->maxSize, info->freeLocalStart.pVoid,
@@ -457,7 +501,7 @@ void displaylocal(threadListInfo* info)
 
 #include <sched.h>
 #include <sys/wait.h>
-#define THREADS 4
+#define THREADS 2
 
 #ifdef  _TESTCOUNT
 void CMemoryListArray::DisplayArray(void)
@@ -487,8 +531,8 @@ int main(int, char**)
   //CMemoryListLockFree m;
   int status;
  
-  m.SetMemoryBuffer(100, 80, 64);
-  m.SetThreadLocalArray(THREADS, 16, 8);
+  m.SetMemoryBuffer(10, 80, 64);
+  m.SetThreadLocalArray(THREADS, 4, 2);
 
   for (int i=0; i<THREADS; i++) {
     cStack = getStack();
@@ -503,8 +547,7 @@ int main(int, char**)
  return 0;
 }
 
-
-#define TEST_TIMES 5000000
+#define TEST_TIMES 500000
 #define TEST_ITMES 15
 
 int ThreadItem(void *para)
@@ -528,7 +571,6 @@ int ThreadItem(void *para)
 
 #ifdef _TESTCOUNT
 
-
 void CMemoryAlloc::DisplayInfo(void)
 {
   printf("Total:%10lld, Free:%10lld\n", TotalNumber, FreeNumber);
@@ -547,7 +589,6 @@ void CMemoryAlloc::DisplayInfo(void)
   }
 }
 
-
 #endif // _TESTCOUNT
 
 
@@ -556,6 +597,14 @@ void CMemoryAlloc::DisplayInfo(void)
 60M times 9.2 2thread1cpu lockfree, 11.2 2thread2cpu lockfree, 3.4*2 1thread lockfree
 60M times 5.9 2thread2cpu semi, 1.0*2 1thread semi
 60M times 6.3 2thread2cpu semi add head, 1.1*2 1thread semiadd head
-60M times 4.0 2thread2cpu localarray, 1.1 2thread2cpu localarray without add count
+60M times 4.0 2thread2cpu localarray(4 local), 1.1 2thread2cpu localarray without add count
 this is the best way i have found, about 30ns per Get/Free for one cpu
+
+test for 4 thread in 2cpu, every thread get 15 and free 15 for 5M times
+total for 300M times get and free. second line is second
+the size in table means max number, it will free only reach max.
+16 means all local, 14-8 are almost same
+|  16 |  14 |  12 |  10 |    8 |    6 |    4 |    2 |
+| 4.2 | 9.1 | 8.8 | 8.7 | 11.4 | 17.1 | 21.6 | 40.8 |
+the fast is all local, only 14ns for one GET/FREE. 
  */
