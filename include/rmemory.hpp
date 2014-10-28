@@ -13,6 +13,7 @@
 class   CListItem;
 class   CContextItem;
 
+#define MARK_USED_END           0x30
 #define MARK_FREE_END           0x20
 #define MARK_USED               0x10
 //#define MARK_FREE_END           (CListItem*)(void*)0x20
@@ -241,6 +242,7 @@ typedef struct threadMemoryInfo {
   ADDR  localArrayStart;
   ADDR  freeLocalStart;
   ADDR  localArrayEnd;
+  ADDR  usedLocalStart;
 }threadListInfo;
 
 class CMemoryListArray: public CMemoryAlloc
