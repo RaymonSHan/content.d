@@ -14,6 +14,7 @@ class   CListItem;
 class   CContextItem;
 
 #define MARK_USED_END           0x30
+#define MARK_UNUSED             0x28
 #define MARK_FREE_END           0x20
 #define MARK_USED               0x10
 
@@ -22,7 +23,7 @@ class   CContextItem;
 #define MARK_MAX                (CListItem*)(void*)MARK_MAX_INT
 #define BUFFER_SIZE             16*1024*1024
 
-#define TIMEOUT_TCP             20ll
+#define TIMEOUT_TCP             1ll
 #define TIMEOUT_INFINITE        0xffffffffll
 #define TIMEOUT_QUIT            2ll
 
@@ -206,12 +207,13 @@ public:
   INT   GetMemoryList(ADDR &nlist);                             // For DirectFree mode, same as GetOneList
   INT   FreeMemoryList(ADDR nlist);                             // For NON-Direct mode, only make a mark
 
-  void  TimeoutContext(ADDR usedStart);
-  void  DisplayContext(void);
+  void  CountTimeout(ADDR usedStart);
   ADDR  SetBuffer(INT number, INT itemsize, INT bordersize);
   INT   GetNumber()             { return TotalNumber; };
   INT   GetFreeNumber()         { return FreeNumber; };
 
+  virtual void DisplayContext(void);
+  virtual INT TimeoutAll(void);
 #ifdef  _TESTCOUNT              // for test function, such a multithread!
   void  DisplayInfo(void);
 #endif  // _TESTCOUNT
@@ -242,7 +244,11 @@ typedef struct threadMemoryInfo {
   ADDR  freeLocalStart;
   ADDR  localArrayEnd;
   ADDR  usedLocalStart;
+  INT   threadFlag;
 }threadListInfo;
+
+#define THREAD_FLAG_GETMEMORY   0x1
+#define THREAD_FLAG_SCHEDULE    0x2
 
 class CMemoryListArray: public CMemoryAlloc
 {
@@ -265,7 +271,10 @@ public:
   INT   GetListGroup(ADDR &groupbegin, INT number);
   INT   FreeListGroup(ADDR &groupbegin, INT number);
   INT   SetThreadLocalArray(INT threadnum, INT maxsize, INT getsize);
-  INT   SetThreadArea();
+  INT   SetThreadArea(INT flag);
+
+  virtual void DisplayContext(void);
+  virtual INT TimeoutAll(void);
 
 #ifdef  _TESTCOUNT              // for test function, such a multithread!
   void  DisplayArray(void);
@@ -274,6 +283,7 @@ public:
 
 
 int                             ThreadItem(void *para);
+int                             ThreadSchedule(void *para);
 
 class CListItem
 {
