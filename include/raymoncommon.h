@@ -22,7 +22,6 @@
 #define BOOL                    bool
 #define HANDLE_LOCK             long long int			//
 
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error control                                                                                   //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
@@ -93,30 +92,7 @@ void    __MESSAGE(INT level, const char *_file, const char *_func, INT ret, cons
 #define __LOCK(lock)            while(!CmpExg(&lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREE(lock)            lock = NOT_IN_PROCESS;
 
-/*
-#define IPPORT(addr)				inet_ntoa(addr.sin_addr), ntohs(addr.sin_port)
-#define	DASZ(name)					name, sizeof(name)
-#define	NASZ(name)					name, sizeof(name)-1
-
-void inline SetAF_INET(sockaddr_in &addr, ULONG ip, USHORT port)
-{
-	addr.sin_family					= AF_INET;
-	addr.sin_addr.s_addr			= htonl(ip);
-	addr.sin_port					= htons(port);
-}
-void inline SetAF_INET(sockaddr_in &addr, PCHAR ip, USHORT port)
-{
-	addr.sin_family					= AF_INET;
-	addr.sin_addr.s_addr			= inet_addr(ip);
-	addr.sin_port					= htons(port);
-}
-
-char* memstr(char* sourstr, long size, char* substr, long subsize);
-char* memstr_no(char* sourstr, long size, char* substr, long subsize, char nochar);
-*/
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Common                                                                                          //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-
 void    perrorexit(const char* s);

@@ -12,7 +12,7 @@
    (ede-proj-target-makefile-program "epolltest"
     :name "epolltest"
     :path ""
-    :source '("epollpool.cpp" "raymoncommon.cpp" "rmemory.cpp")
+    :source '("epollpool.cpp" "raymoncommon.cpp" "rmemory.cpp" "testmain.cpp")
     )
    )
   :makefile-type 'Makefile.am
