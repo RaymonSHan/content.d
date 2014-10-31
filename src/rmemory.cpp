@@ -16,9 +16,9 @@ ADDR getMemory(INT size, INT flag)
 {
   static ADDR totalMemoryStart = {SEG_START_STACK};
   ADDR p;
-  // per thread info is store in the begining of stack 
+
   size = PAD_INT(size, 0, SIZE_THREAD_STACK);
-  p = __sync_fetch_and_add(&(totalMemoryStart.aLong), size);
+  p = LockAdd(totalMemoryStart.aLong, size);
   p.pVoid = mmap (p.pVoid, size, PROT_READ | PROT_WRITE,
 		  MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | flag, -1, 0);
   return p;
@@ -32,24 +32,19 @@ ADDR getStack(void)
   return stack;
 }
 
-CMemoryAlloc::CMemoryAlloc()
+CMemoryAlloc::CMemoryAlloc() 
+  : RThreadResource(sizeof(threadMemoryInfo))
 { 
   RealBlock = 0;
-  BorderSize = TotalSize = 0;
+  TotalNumber = BorderSize = ArraySize = TotalSize = 0;
 
-  TotalBuffer = UsedItem = FreeBufferStart = FreeBufferEnd = 0;
-  TotalNumber = FreeNumber = 0;
-
-  InProcess = usedProcess = NOT_IN_PROCESS;
+  InProcess = NOT_IN_PROCESS;
   pInProcess = &InProcess;
-  pusedProcess = &usedProcess;
 
 #ifdef _TESTCOUNT
   GetCount = GetSuccessCount = FreeCount = FreeSuccessCount = 0;
-  FreeLoop = GetLoop = GetFail = 0;
 #endif // _TESTCOUNT
 
-  DirectFree = 1;
   GlobalTime = time(NULL);
 }
 
@@ -58,34 +53,38 @@ CMemoryAlloc::~CMemoryAlloc()
   DelMemoryBuffer();
 }
 
-INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border)
+INT CMemoryAlloc::SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag)
 {
-  ADDR  thisItem, nextItem;
-  INT   i;
+  INT   id;
+  threadMemoryInfo *info;
 
   __TRY
+    id = LockInc(nowThread);
+    __DO(id >= MAX_SHARE_THREAD);
+
+    getThreadInfo(info, nowOffset);
+    info->getSize = getsize;
+    info->freeSize = freesize;
+    info->threadFlag = flag;
+    info->localArrayStart.pAddr = &(info->localCache[MAX_LOCAL_CACHE - maxsize]);
+    info->localFreeStart. pAddr = &(info->localCache[MAX_LOCAL_CACHE]);
+    info->localArrayEnd.  pAddr = &(info->localCache[MAX_LOCAL_CACHE - 1]);
+    info->localUsedList = MARK_USED_END;
+    threadListAddr[id] = info;
+  __CATCH
+}
+
+INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct)
+{
+  __TRY
     __MARK(mmapMemory)
-    BorderSize = ((size-1) / border + 1) * border;
-    TotalSize = BorderSize * number;
+    BorderSize = PAD_INT(size, 0, border);
+    ArraySize = number * sizeof(ADDR);
+    TotalSize = BorderSize * number + ArraySize;
     RealBlock = getMemory(TotalSize, 0);
     __DO(RealBlock == MAP_FAIL);
-
-    BufferSize = size - sizeof(CListItem);
-    thisItem = nextItem = RealBlock;
-    for (i=0; i<number-1; i++) {
-      nextItem += BorderSize;
-      thisItem.NextList = nextItem;
-      thisItem.UsedList = MARK_UNUSED;
-      thisItem = nextItem;
-    }
-    FreeBufferStart = TotalBuffer = RealBlock;
-    FreeBufferEnd = nextItem;
-    nextItem.NextList = MARK_FREE_END;
-    
-    TotalNumber = FreeNumber = number;
-#ifdef _TESTCOUNT
-    MinFree = FreeNumber;
-#endif // _TESTCOUNT
+    TotalNumber = number;
+    DirectFree = direct;
   __CATCH
 }
 
@@ -102,8 +101,7 @@ INT CMemoryAlloc::GetMemoryList(ADDR &nlist)
 {
   __TRY
     __DO(GetOneList(nlist))
-    nlist.NextList = MARK_USED;
-    if (!DirectFree) AddToUsed(nlist);
+    /*if (!DirectFree)*/ AddToUsed(nlist);
   __CATCH
 }
 
@@ -115,284 +113,89 @@ INT CMemoryAlloc::FreeMemoryList(ADDR nlist)
   __CATCH
 }
 
-INT CMemoryListCriticalSection::GetOneList(ADDR &nlist)
+INT CMemoryAlloc::GetOneList(ADDR &nlist)
 {
-  __LOCKp(pInProcess)
-#ifdef _TESTCOUNT
-    GetCount++;
-#endif // _TESTCOUNT
-  nlist = FreeBufferStart;                                      // Get the first free item
-
-  if (nlist.NextList > MARK_MAX) {                              // Have free
-    FreeBufferStart = nlist.NextList;
-    FreeNumber--;
-#ifdef _TESTCOUNT
-    if (FreeNumber < MinFree) MinFree = FreeNumber;
-    GetSuccessCount++;
-#endif // _TESTCOUNT
-  }
-  else nlist = NUL;
-
-  __FREEp(pInProcess)
-  return (nlist == NUL);
-}
-
-INT CMemoryListCriticalSection::FreeOneList(ADDR nlist)
-{
-  __TRY
-    __LOCKp(pInProcess)
-
-#ifdef _TESTCOUNT
-    FreeCount++;
-#endif // _TESTCOUNT
-    __DO_((nlist < MARK_MAX || nlist.NextList != MARK_USED),
-	    "FreeList Twice %p\n", nlist.pList);
-    //FreeListToTail(nlist);
-    // or
-    FreeListToHead(nlist);
-#ifdef _TESTCOUNT
-    FreeSuccessCount++;
-#endif // _TESTCOUNT
-    FreeNumber++;
-
-    __FREEp(pInProcess)
-  __CATCH_BEGIN
-    __FREEp(pInProcess)
- __CATCH_END
-}
-
-inline void CMemoryListCriticalSection::FreeListToTail(ADDR nlist)
-{
-  nlist.NextList = MARK_FREE_END;
-  FreeBufferEnd.NextList = nlist;
-  FreeBufferEnd = nlist;
-}
-
-inline void CMemoryListCriticalSection::FreeListToHead(ADDR nlist)
-{
-  nlist.NextList = FreeBufferStart;
-  FreeBufferStart = nlist;
-}
-
-INT CMemoryListCriticalSection::AddToUsed(ADDR nlist)
-{
-  nlist.CountDown = GlobalTime;                                 // now time
-  __LOCKp(pusedProcess)
-  nlist.UsedList = UsedItem;
-  UsedItem = nlist;
-  __FREEp(pusedProcess)
-  return 0;
-}
-
-INT CMemoryListLockFree::GetOneList(ADDR &nlist)
-{
-  ADDR  next;
-  volatile INT* start = &FreeBufferStart.aLong;
-  BOOL changed;
-#ifdef _TESTCOUNT
-  __sync_fetch_and_add(&GetCount, 1);
-  __sync_fetch_and_add(&GetSuccessCount, 1);
-#endif // _TESTCOUNT
-
-  do {
-    do {
-      nlist.aLong = *start;
-      if (nlist > 0)
-	changed = __sync_bool_compare_and_swap(start, nlist.aLong, 0);
-    } while (!changed);
-
-    next = nlist.NextList;
-    if (next > MARK_MAX) {                   // Have free
-      changed = __sync_bool_compare_and_swap(start, 0, next.aLong);
-    }
-    else {
-      nlist = NUL;
-#ifdef _TESTCOUNT
-      __sync_fetch_and_add(&GetSuccessCount, -1);
-#endif // _TESTCOUNT
-      break;
-    }
-  } while (!changed);
-  if (nlist != NUL) __sync_fetch_and_add(&FreeNumber, -1);
-
-  return (nlist == NUL);
-}
-
-INT CMemoryListLockFree::FreeOneList(ADDR nlist)
-{
-  ADDR  next;
-  BOOL changed;
-  volatile INT* start = &FreeBufferStart.aLong;
-#ifdef _TESTCOUNT
-  __sync_fetch_and_add(&FreeCount, 1);
-  __sync_fetch_and_add(&FreeSuccessCount, 1);
-#endif // _TESTCOUNT
-
-  do {
-    do {
-      next.aLong = *start;
-      if (next > 0)
-	changed = __sync_bool_compare_and_swap(start, next.aLong, 0);
-    } while (!changed);
-
-    nlist.NextList = next;
-    changed = __sync_bool_compare_and_swap(start, 0, nlist.aLong);
-  }
-  while (!changed);
-  __sync_fetch_and_add(&FreeNumber, 1);
-  return 0;
-}
-
-INT CMemoryListLockFree::AddToUsed(ADDR)// nlist)
-{
-  return 0;
-}
-
-INT CMemoryListArray::GetOneList(ADDR &nlist)
-{
-  threadMemoryInfo *minfo;
-  getThreadInfo(minfo, OFFSET_MEMORYLIST);
+  threadMemoryInfo *info;
+  getThreadInfo(info, nowOffset);
 
   __TRY
 #ifdef _TESTCOUNT
-    __sync_fetch_and_add(&GetCount, 1);
+    LockInc(GetCount);
 #endif // _TESTCOUNT
-    if (minfo->freeLocalStart > minfo->localArrayEnd) {
-      GetListGroup(minfo->freeLocalStart, minfo->getSize);
+    if (info->localFreeStart > info->localArrayEnd) {
+      GetListGroup(info->localFreeStart, info->getSize);
     }
-    __DO(minfo->freeLocalStart > minfo->localArrayEnd);
-    nlist = *(minfo->freeLocalStart.pAddr);
-    minfo->freeLocalStart += sizeof(ADDR);
+    __DO(info->localFreeStart > info->localArrayEnd);
+    nlist = *(info->localFreeStart.pAddr);
+    info->localFreeStart += sizeof(ADDR);
 #ifdef _TESTCOUNT
-   __sync_fetch_and_add(&FreeNumber, -1);
-   if (FreeNumber < MinFree) MinFree = FreeNumber;
-   __sync_fetch_and_add(&GetSuccessCount, 1);
+   LockInc(GetSuccessCount);
 #endif // _TESTCOUNT
   __CATCH
 }
 
-INT CMemoryListArray::FreeOneList(ADDR nlist)
+INT CMemoryAlloc::FreeOneList(ADDR nlist)
 {
-  threadMemoryInfo *minfo;
-  getThreadInfo(minfo, OFFSET_MEMORYLIST);
+  threadMemoryInfo *info;
+  getThreadInfo(info, nowOffset);
 
   __TRY
 #ifdef _TESTCOUNT
-  __sync_fetch_and_add(&FreeCount, 1);
+    LockInc(FreeCount);
 #endif // _TESTCOUNT
-    if (minfo->freeLocalStart <= minfo->localArrayStart) {
-      FreeListGroup(minfo->freeLocalStart, minfo->getSize);
+    if (info->localFreeStart <= info->localArrayStart) {
+      FreeListGroup(info->localFreeStart, info->freeSize);
     }
-    __DO_((nlist < MARK_MAX || nlist.NextList != MARK_USED),
+    __DO_((nlist < MARK_MAX || nlist.UsedList == MARK_UNUSED),
 	    "FreeList Twice %p\n", nlist.pList);
 
-    minfo->freeLocalStart -= sizeof(ADDR);
-    *(minfo->freeLocalStart.pAddr) = nlist; 
-    nlist.NextList = nlist;                                     // only mark for unused
+    info->localFreeStart -= sizeof(ADDR);
+    *(info->localFreeStart.pAddr) = nlist; 
     nlist.UsedList = MARK_UNUSED;                               // mark for unsed too
 #ifdef _TESTCOUNT
-    __sync_fetch_and_add(&FreeNumber, 1);
-    __sync_fetch_and_add(&FreeSuccessCount, 1);
+    LockInc(FreeSuccessCount);
 #endif // _TESTCOUNT
   __CATCH
 }
 
 // need NOT lock, schedule thread will NOT change usedLocalStart, 
 // and NOT remove first node in UsedList, even countdowned.
-INT CMemoryListArray::AddToUsed(ADDR nlist)
+INT CMemoryAlloc::AddToUsed(ADDR nlist)
 {
-  threadMemoryInfo *minfo;
-  getThreadInfo(minfo, OFFSET_MEMORYLIST);
+  threadMemoryInfo *info;
+  getThreadInfo(info, nowOffset);
 
   nlist.CountDown = GlobalTime;                                 // it is now time
-  nlist.UsedList = minfo->usedLocalStart;
-  minfo->usedLocalStart = nlist;
+  nlist.UsedList = info->localUsedList;
+  info->localUsedList = nlist;
   return 0;
 }
 
-INT CMemoryListArray::SetThreadLocalArray(INT threadnum, INT maxsize, INT getsize)
+INT CMemoryAlloc::SetThreadLocalArray()
 {
-  INT   memorySize = 0;
   ADDR  memoryarray, memoryarraylist;
-  ADDR  threadarray, threadarea;
-  ADDR  threadfreestart;
-  threadListInfo **info = (threadListInfo**)&(threadarea);
   INT   i;
-  BOOL  isOK;
 
   __TRY
     __DO_(!TotalNumber, "Must call SetMemoryBuffer before SetThreadLocalArray");
-    isOK = (maxsize > getsize) && (TotalNumber > (getsize+1)*threadnum+1);
-    __DO_(!isOK, "Invalid number for CMemoryList");
-
-    // threadArraySize means every thread local array size, in byte with pad
-    threadArraySize = (maxsize + SIZE_SMALL_PAD) * sizeof(ADDR);
-    // threadAreaSize means thread info size, in byte with pad
-    threadAreaSize = PAD_SIZE(threadListInfo, SIZE_SMALL_PAD, SIZE_CACHE);
-    // memorySize means total size in byte
-    memorySize = TotalNumber * sizeof(ADDR) + (threadAreaSize + threadArraySize) * threadnum;
-    memorySize = PAD_INT(memorySize, SIZE_CACHE, SIZE_PAGE);
     nowThread = 0;
-    threadNum = threadnum;
-    memoryArea = getMemory(memorySize, 0);
-    __DO_(memoryArea == MAP_FAIL, "Could NOT mmap memory");
-    memoryArrayStart = memoryArrayFree = memoryArea;
-    memoryArrayEnd =  memoryArea + (TotalNumber - 1) * sizeof(ADDR);
-    memoryarray = memoryArea;
-    memoryarraylist = FreeBufferStart;
+    memoryArrayStart = memoryArrayFree = RealBlock + (TotalSize - ArraySize);
+    //    memoryArrayEnd =  memoryArrayStart + (TotalNumber - 1) * sizeof(ADDR);
+    memoryArrayEnd =  memoryArrayStart + TotalNumber * sizeof(ADDR);
+    memoryarray = memoryArrayStart;
+    memoryarraylist = RealBlock;
+
     // Init global array
     for(i=0; i<TotalNumber; i++) {
       *(memoryarray.pAddr) = memoryarraylist;
       memoryarray += sizeof(ADDR);
-      memoryarraylist = memoryarraylist.NextList;
+      memoryarraylist += BorderSize; 
     }
-
-    // Init thread local area
-    threadarray = memoryArea + TotalNumber * sizeof(ADDR);
-    threadArea = threadarray + threadArraySize * threadnum;
-    threadArea = PAD_ADDR(threadArea, 0, SIZE_CACHE);
-    threadarea = threadArea;
-    for (i=0; i<threadnum; i++) {
-      (*info)->maxSize = maxsize;
-      (*info)->getSize = getsize;
-      (*info)->localArrayStart = threadarray;
-      (*info)->freeLocalStart = threadfreestart =	\
-	threadarray + (maxsize-getsize)*sizeof(ADDR);
-      (*info)->localArrayEnd = threadarray + (maxsize-1)*sizeof(ADDR);
-      (*info)->usedLocalStart = MARK_USED_END;
-      // Init thread local array
-      memcpy (threadfreestart.pVoid, memoryArrayFree.pVoid, getsize*sizeof(ADDR));
-      memoryArrayFree += getsize*sizeof(ADDR);
-
-      threadarea += threadAreaSize;
-      threadarray += threadArraySize;
-    }
-  __CATCH
-}
-
-INT CMemoryListArray::SetThreadArea(INT flag)
-{
-  INT   id;
-  threadMemoryInfo* info;
-  ADDR  addr;
-
-  __TRY
-    id = __sync_fetch_and_add(&nowThread, 1);
-    __DO(id >= threadNum);
-    
-    addr = threadArea + id * threadAreaSize;
-    info = (threadMemoryInfo*)addr.pVoid;
-    info->threadFlag = flag;
-    if (flag & THREAD_FLAG_SCHEDULE) {
-      info->localArrayStart = info->freeLocalStart;
-      info->maxSize = info->getSize;
-    }
-    setThreadInfo(threadArea + id * threadAreaSize, OFFSET_MEMORYLIST );
   __CATCH
 }
 
 // groupbegin is local freeLocalStart
-INT CMemoryListArray::GetListGroup(ADDR &groupbegin, INT number)
+INT CMemoryAlloc::GetListGroup(ADDR &groupbegin, INT number)
 {
   INT   getsize, getnumber;
   __TRY
@@ -401,6 +204,7 @@ INT CMemoryListArray::GetListGroup(ADDR &groupbegin, INT number)
     getnumber = getsize / sizeof(ADDR);
     if (getnumber < number) number = getnumber;
     if (number) {
+      //  printf("in get group\n");
       getsize = number * sizeof(ADDR);
       groupbegin -= getsize;                                      // change thread's freeLocalStart
       memcpy(groupbegin.pVoid, memoryArrayFree.pVoid, getsize);
@@ -411,7 +215,7 @@ INT CMemoryListArray::GetListGroup(ADDR &groupbegin, INT number)
 }
 
 // groupbegin is local freeLocalStart
-INT CMemoryListArray::FreeListGroup(ADDR &groupbegin, INT number)
+INT CMemoryAlloc::FreeListGroup(ADDR &groupbegin, INT number)
 {
   INT   freesize;
   __TRY
@@ -466,109 +270,89 @@ void CMemoryAlloc::CountTimeout(ADDR usedStart)
 
 INT CMemoryAlloc::TimeoutAll(void)
 {
-  GlobalTime = time(NULL);
-  CountTimeout(UsedItem);
-  return 0;
-}
-
-INT CMemoryListArray::TimeoutAll(void)
-{
   INT   i;
-  ADDR  infoAddr;
-  threadMemoryInfo *info;
   GlobalTime = time(NULL);
-  infoAddr = threadArea;
-
   for (i=0; i<nowThread; i++) {
-    info = (threadMemoryInfo*)infoAddr.pVoid;
-    CountTimeout(info->usedLocalStart);
-    infoAddr += threadAreaSize;
+    CountTimeout(threadListAddr[i]->localUsedList);
   }
   return 0;
 }
 
 #ifdef _TESTCOUNT
-void CMemoryListArray::DisplayLocal(threadListInfo* info)
+
+#define PRINT_COLOR(p) printf("\e[0;%sm", p)
+#define RESTORE_COLOR printf("\e[0;37m")
+
+void CMemoryAlloc::DisplayLocal(threadListInfo* info)
 {
-  printf("%lld, free:%p, start:%p, end:%p\n", info->maxSize, info->freeLocalStart.pVoid,
+  ADDR list;
+
+  printf("free:%p, start:%p, end:%p\n", info->localFreeStart.pVoid,
 	 info->localArrayStart.pVoid, info->localArrayEnd.pVoid);
-  ADDR list = info->localArrayStart;
-  for (int i=0; i<info->maxSize; i++) {
+  for (int i=0; i<MAX_LOCAL_CACHE; i++) {
+    list.pAddr = &(info->localCache[i]);
+    if (list == info->localFreeStart) PRINT_COLOR("36");
     if (list.pAddr->pVoid)
-      printf("%p, %p, %p\n", list.pVoid, list.pAddr->pVoid, list.pAddr->NextList.pVoid);
+      printf("%p, %p\n", list.pVoid, list.pAddr->pVoid);
     else
       printf("%p, %p, (nil)\n", list.pVoid, list.pAddr->pVoid);
-    list += sizeof(ADDR);
   }
+  RESTORE_COLOR;
 }
 
-void CMemoryListArray::DisplayArray(void)
+void CMemoryAlloc::DisplayArray(void)
 {
   INT i;
   printf("Array Start:%p, Free:%p, End%p\n", 
 	 memoryArrayStart.pVoid, memoryArrayFree.pVoid, memoryArrayEnd.pVoid);
   ADDR arr = memoryArrayStart;
-  threadListInfo** info = (threadListInfo**) &arr;
+
   for (i=0; i<TotalNumber; i++) {
-    printf("%p, %p, %p\n", arr.pVoid, (*arr.pAddr).pVoid, (*arr.pAddr).NextList.pVoid);
-    arr += sizeof(ADDR);
+    if (arr == memoryArrayFree) PRINT_COLOR("36");
+      printf("%p, %p\n", arr.pVoid, (*arr.pAddr).pVoid);
+      arr += sizeof(ADDR);
   }
-  for (i=0; i<threadNum; i++) {
-    arr = threadArea + i * threadAreaSize;
+  RESTORE_COLOR;
+
+  for (i=0; i<nowThread; i++) {
     printf("thread :%lld, ", i);
-    DisplayLocal(*info);
+    DisplayLocal(threadListAddr[i]);
   }
   printf("\n");
 }
 
-void CMemoryAlloc::DisplayContext(void)
-{
-  ADDR nlist = UsedItem;
-  while (nlist > MARK_MAX) {
-    printf("%p:%lld->", nlist.pVoid, nlist.CountDown);
-    nlist = nlist.UsedList;
-  }
-  if (UsedItem.aLong) printf("\n");
-}
-
 void CMemoryAlloc::DisplayInfo(void)
 {
-  printf("Total:%10lld, Free:%10lld\n", TotalNumber, FreeNumber);
   printf("Get  :%10lld, Succ:%10lld\n", GetCount, GetSuccessCount);
   printf("Free :%10lld, Succ:%10lld\n", FreeCount, FreeSuccessCount);
-  printf("GLoop:%10lld, FLoop:%9lld, GetFail:%10lld\n", GetLoop, FreeLoop, GetFail);
   printf("MinFree:%8lld,\n", MinFree);
 
   volatile ADDR item;
-  printf("buffer start, end: %llx, %llx\n", FreeBufferStart.aLong, FreeBufferEnd.aLong); 
     item.pList = RealBlock.pList;
     for (int i=0; i<TotalNumber; i++) {
-      printf("%5d:%p, %p, %p,\n", i, item.pList, item.pList->nextList.pVoid, item.pList->usedList.pVoid);
+      printf("%5d:%p, %p,\n", i, item.pList, item.pList->usedList.pVoid);
       item.aLong += BorderSize;
   }
 }
 
-void CMemoryListArray::DisplayContext(void)
+void CMemoryAlloc::DisplayContext(void)
 {
   INT   i;
-  ADDR nlist;
-  ADDR  infoAddr;
+  ADDR  nlist;
   threadMemoryInfo *info;
   GlobalTime = time(NULL);
-  infoAddr = threadArea;
 
   for (i=0; i<nowThread; i++) {
-    info = (threadMemoryInfo*)infoAddr.pVoid;
+    info = threadListAddr[i];
     if (info->threadFlag & THREAD_FLAG_GETMEMORY) {
-      nlist = info->usedLocalStart;
+      nlist = info->localUsedList;
       printf("thread:%lld:->", i);
       while (nlist > MARK_MAX) {
 	printf("%p:%lld->", nlist.pVoid, nlist.CountDown);
 	nlist = nlist.UsedList;
       }
-      if (info->usedLocalStart.aLong) printf("\n");
+      if (info->localUsedList.aLong) printf("\n");
     }
-    infoAddr += threadAreaSize;
   }
 }
 #endif // _TESTCOUNT

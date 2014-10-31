@@ -1,8 +1,8 @@
 
-#include   <stdarg.h>
+#ifndef INCLUDE_RAYMONCOMMON_H
+#define INCLUDE_RAYMONCOMMON_H
 
-#define MAP_FAIL                -1                              // lazy replace MAP_FAILED
-#define NUL                     0                               // lazy replace NULL
+#include   <stdarg.h>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Common const                                                                                    //
@@ -22,9 +22,23 @@
 #define BOOL                    bool
 #define HANDLE_LOCK             long long int			//
 
+#define MAP_FAIL                -1                              // lazy replace MAP_FAILED
+#define NUL                     0                               // lazy replace NULL
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+// pad size for border, stack must at 2^n border                                                   //
+////////\///////////////////////\///////////////////////////////\//////////////////////////        //
+#define PAD_SIZE(p, pad, bord)				\
+  ((sizeof(p) + pad - 1) & (-1 * bord)) + bord
+#define PAD_INT(p, pad, bord)				\
+  ((p + pad - 1) & (-1 * bord)) + bord
+#define PAD_ADDR(p, pad, bord)				\
+  ((p.aLong + pad - 1) & (-1 * bord)) + bord
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error control                                                                                   //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
+
 #define __RSTRING2(x)           #x
 #define __RSTRING(x)            __RSTRING2(x)
 
@@ -34,14 +48,13 @@
 #define __TO_MARK(x)            _rm_ ## x                       // used for ret_err control
 #define _rm_MarkMax             0xffffffff                      // for mark end
 
-#define	__TRY                   INT ret_err = __LINE__;
+#define	__TRY                   INT ret_err = __LINE__; beginCall();
 #define __MARK(x)               static int __TO_MARK(x) = ret_err = __LINE__;
-#define __CATCH_BEGIN           return 0; error_stop:
+#define __CATCH_BEGIN           endCall(); return 0; error_stop:
 #define __BETWEEN(x,y)          if (ret_err >= __TO_MARK(x) && ret_err <= __TO_MARK(y))
 #define __AFTER(x)              if (ret_err >= __TO_MARK(x))
 #define __CATCH_END             return ret_err;
-#define	__CATCH                 return 0; error_stop: return ret_err;
-
+#define	__CATCH                 endCall(); return 0; error_stop: return ret_err;
 #define __BREAK                 { goto error_stop; }
 #define __BREAK_OK              { ret_err = 0; goto error_stop; }
 
@@ -52,9 +65,9 @@
 void    __MESSAGE(INT level, const char *_file, const char *_func, INT ret, const char * _Format, ...);
 
 #define __INFO(level, _Format,...)					\
-  { __MESSAGE(level, __FILE__, __FUNCTION__, __LINE__, _Format,##__VA_ARGS__); }
+  { __MESSAGE(level, __FILE__, __PRETTY_FUNCTION__, __LINE__, _Format,##__VA_ARGS__); }
 #define __INFOb(level, _Format,...)					\
-  { __MESSAGE(level, __FILE__, __FUNCTION__, __LINE__, _Format,##__VA_ARGS__); \
+  { __MESSAGE(level, __FILE__, __PRETTY_FUNCTION__, __LINE__, _Format,##__VA_ARGS__); \
     ret_err = 0; goto error_stop;}
 
 #define __DOc_(func, _Format,...) {					\
@@ -86,6 +99,9 @@ void    __MESSAGE(INT level, const char *_file, const char *_func, INT ret, cons
 #define IN_PROCESS              (INT)0xa1
 
 #define CmpExg                  __sync_bool_compare_and_swap
+#define LockAdd(p,s)            __sync_fetch_and_add(&p, s)
+#define LockInc(p)              __sync_fetch_and_add(&p, 1)
+#define LockDec(p)              __sync_fetch_and_add(&p, -1)
 
 #define __LOCKp(lock)           while(!CmpExg(lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREEp(lock)           *lock = NOT_IN_PROCESS;
@@ -96,3 +112,5 @@ void    __MESSAGE(INT level, const char *_file, const char *_func, INT ret, cons
 // Common                                                                                          //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 void    perrorexit(const char* s);
+
+#endif  // INCLUDE_RAYMONCOMMON_H

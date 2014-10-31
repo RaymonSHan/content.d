@@ -201,26 +201,9 @@ void killAllChild(int)
     kill(RpollApp.RpollWriteGroup[i].ReturnWorkId(), SIGTERM);
 }
 
-INT testreterr()
-{
-  __TRY
-    __MARK(First)
-    __DO_(ret_err == 0, "is 0");
-  __DO_(ret_err != 0, "is not 0");
- 
-
-  __CATCH_BEGIN
-    __BETWEEN(First, MarkMax) printf("between %lld\n", ret_err);
-    __BETWEEN(First, MarkMax) printf("between %lld\n", ret_err);
-  __CATCH_END
-}
-
 /*
 int main (int, char**)
 {
-  //  testreterr();
-  //  return 0;
-
   struct sockaddr_in addr;
   char local_addr[] = "127.0.0.1";    
   bzero(&addr, sizeof(sockaddr_in));   

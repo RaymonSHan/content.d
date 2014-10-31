@@ -6,66 +6,125 @@
 
 #include "../include/raymoncommon.h"
 #include "../include/rmemory.hpp"
+#include "../include/rthread.hpp"
+#include "../include/epollpool.hpp"
+
+
+#include <stdio.h>
+#include <signal.h>
+#include <execinfo.h>
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+// This is thread test main program from. From                                                     //
+// request : raymoncommon.cpp rthread.cpp                                                          //
+////////\///////////////////////\///////////////////////////////\//////////////////////////        //
+//#define TEST_THREAD
+////////\///////////////////////\///////////////////////////////\//////////////////////////        //
+
+#ifdef  TEST_THREAD
+
+#endif // TEST_THREAD
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // This is rmemory test main program from. From Oct. 22 - 29 2014.                                 //
 // total program time about 50 hour, base on memoryiocp                                            //
-// request : rmemory.cpp                                                                           //
-#define TEST_RMEMORY                                                                             //
+// request : raymoncommon.cpp rmemory.cpp                                                          //
+////////\///////////////////////\///////////////////////////////\//////////////////////////        //
+#define TEST_RMEMORY                                                                            //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 
 #ifdef  TEST_RMEMORY
 
-#define THREADS                 2
+#define THREADS                 3
 #define SCHEDULE_THREAD         1
-#define TEST_TIMES              500000
+#define TEST_TIMES              5000000
 #define TEST_ITMES              3
-#define NUMBER_BUFFER           30
+#define NUMBER_BUFFER           20
+#define GETSIZE                 3
+#define FREESIZE                3
+#define MAXSIZE                 6
+#define DIRECT                  0
+
+#include <ucontext.h>
+
+void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret)
+{
+  ADDR  stack, erroraddr;
+  ucontext_t *uc = (ucontext_t *)secret;
+  threadTraceInfo *tinfo;
+
+  stack.pAddr = &stack;
+  stack &= NEG_SIZE_THREAD_STACK;
+  erroraddr.pVoid = info->si_addr;
+  erroraddr &= NEG_SIZE_THREAD_STACK;
+
+  if (stack == erroraddr) {
+    stack.pVoid = mmap (stack.pChar + SIZE_NORMAL_PAGE, SIZE_NORMAL_PAGE, PROT_READ | PROT_WRITE,
+  			  MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
+  } else {
+    printf("Got signal %d, faulty address is %p, from %llx\n Calling: \n",
+	   sig, info->si_addr, uc->uc_mcontext.gregs[REG_RIP]);
+    displayTraceInfo(tinfo);
+    exit(-1);
+  }
+}
 
 int ThreadSchedule(void *para)
 {
-  CMemoryListArray *clist = (CMemoryListArray*) para;
+  CMemoryAlloc *clist = (CMemoryAlloc*) para;
 
-  __TRY
-    __DO_(clist->SetThreadArea(THREAD_FLAG_SCHEDULE), "Too many thread than setting");
-    for (;;) {
-      clist->TimeoutAll();
+  clist->SetThreadArea(0, GETSIZE, GETSIZE, THREAD_FLAG_SCHEDULE);
+  for (;;) {
+    clist->TimeoutAll();
 #ifdef  _TESTCOUNT
-      clist->DisplayContext();
+    clist->DisplayContext();
 #endif  // _TESTCOUNT
-      usleep(250000);                                           // every 0.25s
-    }
-  __CATCH
+    usleep(250000);                                           // every 0.25s
+  }
+  return 0;
 }
 
 int ThreadItem(void *para)
 {
   ADDR item[TEST_ITMES+2];
-  CMemoryAlloc *cmem = (CMemoryAlloc*) para;
-  CMemoryListArray *clist = (CMemoryListArray*) para;
+  CMemoryAlloc *clist = (CMemoryAlloc*) para;
 
-  __TRY
-    __DO_(clist->SetThreadArea(THREAD_FLAG_GETMEMORY), "Too many thread than setting");
+  clist->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
 
-    for (int i=0; i<TEST_TIMES; i++) {
-      for (int j=0; j<TEST_ITMES; j++) 
-	if (cmem->GetMemoryList(item[j])) item[j]=0;
-      for (int j=0; j<TEST_ITMES; j++) 
-	if (item[j].aLong != 0) cmem->FreeMemoryList(item[j]);
-    }
-  __CATCH
+  // for undirect free
+  for (int j=0; j<TEST_ITMES; j++) 
+    if (clist->GetMemoryList(item[j])) item[j]=0;
+  sleep(1);
+  for (int j=0; j<1; j++) 
+    if (clist->GetMemoryList(item[j])) item[j]=0;
+  sleep(1);
+
+  return 0;
+
+  // for direct free
+  for (int i=0; i<TEST_TIMES; i++) {
+    for (int j=0; j<TEST_ITMES; j++) 
+      if (clist->GetMemoryList(item[j])) item[j]=0;
+    for (int j=0; j<TEST_ITMES; j++) 
+      if (item[j].aLong != 0) clist->FreeMemoryList(item[j]);
+  }
+  return 0;
 }
 
 int main(int, char**)
 {
-  ADDR cStack;
-  CMemoryListArray m;
-  //CMemoryListCriticalSection m;
-  //CMemoryListLockFree m;
-  int status;
- 
-  m.SetMemoryBuffer(NUMBER_BUFFER, 80, 64);
-  m.SetThreadLocalArray(THREADS + SCHEDULE_THREAD, 4, 2);                       // add for schedule use
+  ADDR  cStack;
+  CMemoryAlloc m;
+  int   status;
+  struct sigaction sa;
+
+  sa.sa_sigaction = SIGSEGV_Handle;
+  sigemptyset (&sa.sa_mask);
+  sa.sa_flags = SA_RESTART | SA_SIGINFO;
+  sigaction(SIGSEGV, &sa, NULL);
+
+  m.SetMemoryBuffer(NUMBER_BUFFER, 80, 64, DIRECT);
+  m.SetThreadLocalArray();                                      // add for schedule use
 
   for (int i=0; i<THREADS; i++) {
     cStack = getStack();
@@ -77,8 +136,8 @@ int main(int, char**)
   kill(sch, SIGTERM);
 
 #ifdef  _TESTCOUNT              // for test function, such a multithread!
-  m.DisplayArray();
-  m.DisplayInfo();
+   m.DisplayArray();
+   m.DisplayInfo();
 #endif  // _TESTCOUNT
  return 0;
 }

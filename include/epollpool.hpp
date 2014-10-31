@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>  
+#include <netinet/in.h>
 
 #define MAX_RPOLL_ACCEPT_THREAD         3
 #define MAX_RPOLL_READ_THREAD           4
