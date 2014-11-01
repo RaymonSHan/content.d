@@ -27,8 +27,10 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // memory alloc base class                                                                         //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-ADDR    getMemory(INT size, INT flag);
-ADDR    getStack(void);
+INT     getMemory(ADDR &addr, INT size, INT flag = 0);
+INT     getStack(ADDR &addr);
+//ADDR    getMemory(INT size, INT flag);
+//ADDR    getStack(void);
 
 class CListItem
 {
@@ -69,6 +71,10 @@ typedef struct threadMemoryInfo {
 
 #define THREAD_FLAG_GETMEMORY   0x1
 #define THREAD_FLAG_SCHEDULE    0x2
+
+#define GetThreadMemoryInfo()			\
+  threadMemoryInfo *info;			\
+  getThreadInfo(info, nowOffset);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // malloc alloc class                                                                              //
@@ -128,7 +134,6 @@ public:
 public:
   INT   GetListGroup(ADDR &groupbegin, INT number);
   INT   FreeListGroup(ADDR &groupbegin, INT number);
-  INT   SetThreadLocalArray();
   INT   SetThreadArea(INT flag);
 
   INT   TimeoutAll(void);

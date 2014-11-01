@@ -33,17 +33,22 @@
 #define TEST_RMEMORY                                                                            //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 
+#define __DIRECT
 #ifdef  TEST_RMEMORY
 
-#define THREADS                 3
+#define THREADS                 2
 #define SCHEDULE_THREAD         1
 #define TEST_TIMES              5000000
 #define TEST_ITMES              3
 #define NUMBER_BUFFER           20
-#define GETSIZE                 3
-#define FREESIZE                3
-#define MAXSIZE                 6
+#define GETSIZE                 4
+#define FREESIZE                4
+#define MAXSIZE                 8
+#ifdef  __DIRECT
+#define DIRECT                  1
+#else   // __DIRECT
 #define DIRECT                  0
+#endif  // _DIRECT
 
 #include <ucontext.h>
 
@@ -86,29 +91,30 @@ int ThreadSchedule(void *para)
 
 int ThreadItem(void *para)
 {
+__TRY
   ADDR item[TEST_ITMES+2];
   CMemoryAlloc *clist = (CMemoryAlloc*) para;
 
   clist->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
 
+#ifndef __DIRECT
   // for undirect free
   for (int j=0; j<TEST_ITMES; j++) 
     if (clist->GetMemoryList(item[j])) item[j]=0;
-  sleep(1);
+  sleep(3);
   for (int j=0; j<1; j++) 
     if (clist->GetMemoryList(item[j])) item[j]=0;
   sleep(1);
-
-  return 0;
-
+#else  // __DIRECT
   // for direct free
   for (int i=0; i<TEST_TIMES; i++) {
     for (int j=0; j<TEST_ITMES; j++) 
       if (clist->GetMemoryList(item[j])) item[j]=0;
     for (int j=0; j<TEST_ITMES; j++) 
       if (item[j].aLong != 0) clist->FreeMemoryList(item[j]);
+#endif // __DIRECT
   }
-  return 0;
+__CATCH
 }
 
 int main(int, char**)
@@ -123,23 +129,29 @@ int main(int, char**)
   sa.sa_flags = SA_RESTART | SA_SIGINFO;
   sigaction(SIGSEGV, &sa, NULL);
 
-  m.SetMemoryBuffer(NUMBER_BUFFER, 80, 64, DIRECT);
-  m.SetThreadLocalArray();                                      // add for schedule use
-
+ __TRY
+  __DO(m.SetMemoryBuffer(NUMBER_BUFFER, 80, 64, DIRECT));
   for (int i=0; i<THREADS; i++) {
-    cStack = getStack();
+    getStack(cStack);
     clone (&ThreadItem, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
   }
-  cStack = getStack();
-  int sch = clone (&ThreadSchedule, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
+
+#ifndef __DIRECT
+  int sch;
+  getStack(cStack);
+  sch = clone (&ThreadSchedule, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
+#endif // __DIRECT
   for (int i=0; i<THREADS; i++) waitpid(-1, &status, __WCLONE);
+
+#ifndef __DIRECT
   kill(sch, SIGTERM);
+#endif // __DIRECT
 
 #ifdef  _TESTCOUNT              // for test function, such a multithread!
    m.DisplayArray();
    m.DisplayInfo();
 #endif  // _TESTCOUNT
- return 0;
+__CATCH
 }
 		       
 /*

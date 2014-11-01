@@ -49,7 +49,7 @@
 #define _rm_MarkMax             0xffffffff                      // for mark end
 
 #define	__TRY                   INT ret_err = __LINE__; beginCall();
-#define __MARK(x)               static int __TO_MARK(x) = ret_err = __LINE__;
+#define __MARK(x)               static int __TO_MARK(x) = ret_err = __LINE__; setLine();
 #define __CATCH_BEGIN           endCall(); return 0; error_stop:
 #define __BETWEEN(x,y)          if (ret_err >= __TO_MARK(x) && ret_err <= __TO_MARK(y))
 #define __AFTER(x)              if (ret_err >= __TO_MARK(x))
@@ -62,34 +62,37 @@
 #define MESSAGE_ERROR           0x0002
 #define MESSAGE_HALT            0x0004
 
-void    __MESSAGE(INT level, const char *_file, const char *_func, INT ret, const char * _Format, ...);
+void    __MESSAGE(INT level, const char * _Format, ...);
 
 #define __INFO(level, _Format,...)					\
-  { __MESSAGE(level, __FILE__, __PRETTY_FUNCTION__, __LINE__, _Format,##__VA_ARGS__); }
+  { __MESSAGE(level,  _Format,##__VA_ARGS__); }
 #define __INFOb(level, _Format,...)					\
-  { __MESSAGE(level, __FILE__, __PRETTY_FUNCTION__, __LINE__, _Format,##__VA_ARGS__); \
+  { __MESSAGE(level, _Format,##__VA_ARGS__); \
     ret_err = 0; goto error_stop;}
 
 #define __DOc_(func, _Format,...) {					\
+    setLine();								\
     if (func)								\
       __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
-}
+  }
 #define __DOc(func)             __DOc_(func, NULL)
 
 #define __DO_(func, _Format,...) {					\
-  if (func) {								\
-    __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
-    __BREAK								\
-  }									\
-}
+    setLine();								\
+    if (func) {								\
+      __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
+      __BREAK								\
+    }								\
+  }
 #define __DO(func)              __DO_(func, NULL)
 
 #define __DOb_(func, _Format,...) {					\
-  if (func) {								\
-    __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
-  }									\
+    setLine();								\
+    if (func) {								\
+      __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
+    }									\
   __BREAK								\
-}
+  }
 #define __DOb(func)             __DOb_(func, NULL)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////

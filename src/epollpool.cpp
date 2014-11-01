@@ -54,7 +54,7 @@ RpollGlobalApp::RpollGlobalApp()
 }
 
 #define CLONETHREAD(acts)						\
-  cStack = getStack();							\
+  getStack(cStack);							\
   init = (struct initStruct*)						\
     (cStack.aLong + SIZE_THREAD_STACK - SIZE_NORMAL_PAGE);		\
   init->globalApp = this;						\

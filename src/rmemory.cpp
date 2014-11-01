@@ -12,24 +12,24 @@ volatile INT GlobalTime = 0;
 #define SIZE_PAGE               SIZE_NORMAL_PAGE
 #endif  // HUGE_PAGE
 
-ADDR getMemory(INT size, INT flag)
+INT getMemory(ADDR &addr, INT size, INT flag)
 {
   static ADDR totalMemoryStart = {SEG_START_STACK};
-  ADDR p;
-
-  size = PAD_INT(size, 0, SIZE_THREAD_STACK);
-  p = LockAdd(totalMemoryStart.aLong, size);
-  p.pVoid = mmap (p.pVoid, size, PROT_READ | PROT_WRITE,
-		  MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | flag, -1, 0);
-  return p;
+  __TRY
+    size = PAD_INT(size, 0, SIZE_THREAD_STACK);
+    addr = LockAdd(totalMemoryStart.aLong, size);
+    addr.pVoid = mmap (addr.pVoid, size, PROT_READ | PROT_WRITE,
+		       MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | flag, -1, 0);
+    __DO_(addr == MAP_FAIL, "Get memory error, size:0x%llx", size);
+  __CATCH
 }
 
-ADDR getStack(void)
+INT getStack(ADDR &stack)
 {
-  ADDR  stack = getMemory(SIZE_THREAD_STACK, MAP_GROWSDOWN);
-  if (stack.aLong & (SIZE_THREAD_STACK - 1)) 
-    stack = MAP_FAIL;
-  return stack;
+  __TRY
+    __DO(getMemory(stack, SIZE_THREAD_STACK, MAP_GROWSDOWN));
+    __DO_(stack.aLong & (SIZE_THREAD_STACK - 1), "Error stack place:%p", stack.pVoid);
+  __CATCH
 }
 
 CMemoryAlloc::CMemoryAlloc() 
@@ -56,13 +56,13 @@ CMemoryAlloc::~CMemoryAlloc()
 INT CMemoryAlloc::SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag)
 {
   INT   id;
-  threadMemoryInfo *info;
+  GetThreadMemoryInfo();
 
   __TRY
     id = LockInc(nowThread);
     __DO(id >= MAX_SHARE_THREAD);
 
-    getThreadInfo(info, nowOffset);
+
     info->getSize = getsize;
     info->freeSize = freesize;
     info->threadFlag = flag;
@@ -76,15 +76,31 @@ INT CMemoryAlloc::SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag
 
 INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct)
 {
+  ADDR  memoryarray, memoryarraylist;
+  INT   i;
+
   __TRY
-    __MARK(mmapMemory)
     BorderSize = PAD_INT(size, 0, border);
     ArraySize = number * sizeof(ADDR);
     TotalSize = BorderSize * number + ArraySize;
-    RealBlock = getMemory(TotalSize, 0);
-    __DO(RealBlock == MAP_FAIL);
+    __DO(getMemory(RealBlock, TotalSize));
     TotalNumber = number;
     DirectFree = direct;
+
+    __DO_(!TotalNumber, "Must call SetMemoryBuffer before SetThreadLocalArray");
+    nowThread = 0;
+    memoryArrayStart = memoryArrayFree = RealBlock + (TotalSize - ArraySize);
+    //    memoryArrayEnd =  memoryArrayStart + (TotalNumber - 1) * sizeof(ADDR);
+    memoryArrayEnd =  memoryArrayStart + TotalNumber * sizeof(ADDR);
+    memoryarray = memoryArrayStart;
+    memoryarraylist = RealBlock;
+
+    // Init global array
+    for(i=0; i<TotalNumber; i++) {
+      *(memoryarray.pAddr) = memoryarraylist;
+      memoryarray += sizeof(ADDR);
+      memoryarraylist += BorderSize; 
+    }
   __CATCH
 }
 
@@ -115,13 +131,13 @@ INT CMemoryAlloc::FreeMemoryList(ADDR nlist)
 
 INT CMemoryAlloc::GetOneList(ADDR &nlist)
 {
-  threadMemoryInfo *info;
-  getThreadInfo(info, nowOffset);
+  GetThreadMemoryInfo();
 
   __TRY
 #ifdef _TESTCOUNT
     LockInc(GetCount);
 #endif // _TESTCOUNT
+
     if (info->localFreeStart > info->localArrayEnd) {
       GetListGroup(info->localFreeStart, info->getSize);
     }
@@ -136,8 +152,7 @@ INT CMemoryAlloc::GetOneList(ADDR &nlist)
 
 INT CMemoryAlloc::FreeOneList(ADDR nlist)
 {
-  threadMemoryInfo *info;
-  getThreadInfo(info, nowOffset);
+  GetThreadMemoryInfo();
 
   __TRY
 #ifdef _TESTCOUNT
@@ -162,36 +177,11 @@ INT CMemoryAlloc::FreeOneList(ADDR nlist)
 // and NOT remove first node in UsedList, even countdowned.
 INT CMemoryAlloc::AddToUsed(ADDR nlist)
 {
-  threadMemoryInfo *info;
-  getThreadInfo(info, nowOffset);
-
+  GetThreadMemoryInfo();
   nlist.CountDown = GlobalTime;                                 // it is now time
   nlist.UsedList = info->localUsedList;
   info->localUsedList = nlist;
   return 0;
-}
-
-INT CMemoryAlloc::SetThreadLocalArray()
-{
-  ADDR  memoryarray, memoryarraylist;
-  INT   i;
-
-  __TRY
-    __DO_(!TotalNumber, "Must call SetMemoryBuffer before SetThreadLocalArray");
-    nowThread = 0;
-    memoryArrayStart = memoryArrayFree = RealBlock + (TotalSize - ArraySize);
-    //    memoryArrayEnd =  memoryArrayStart + (TotalNumber - 1) * sizeof(ADDR);
-    memoryArrayEnd =  memoryArrayStart + TotalNumber * sizeof(ADDR);
-    memoryarray = memoryArrayStart;
-    memoryarraylist = RealBlock;
-
-    // Init global array
-    for(i=0; i<TotalNumber; i++) {
-      *(memoryarray.pAddr) = memoryarraylist;
-      memoryarray += sizeof(ADDR);
-      memoryarraylist += BorderSize; 
-    }
-  __CATCH
 }
 
 // groupbegin is local freeLocalStart

@@ -3,7 +3,8 @@
 
 // first page for pad
 // second page for callnest info, which i fix the place
-volatile INT RThreadResource::globalResourceOffset = SIZE_NORMAL_PAGE * 2;
+//volatile INT RThreadResource::globalResourceOffset = PAD_TRACE_INFO * 2;
+volatile INT RThreadResource::globalResourceOffset = PAD_TRACE_INFO + sizeof(threadTraceInfo);
 
 RThreadResource::RThreadResource(INT size)
 {
