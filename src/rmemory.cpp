@@ -56,7 +56,6 @@ CMemoryAlloc::~CMemoryAlloc()
 INT CMemoryAlloc::GetOneList(ADDR &nlist)
 {
   GetThreadMemoryInfo();
-
   __TRY
 #ifdef _TESTCOUNT
     LockInc(GetCount);
@@ -71,6 +70,7 @@ INT CMemoryAlloc::GetOneList(ADDR &nlist)
 #ifdef _TESTCOUNT
    LockInc(GetSuccessCount);
 #endif // _TESTCOUNT
+   
   __CATCH
 }
 
@@ -118,7 +118,6 @@ INT CMemoryAlloc::GetListGroup(ADDR &groupbegin, INT number)
     getnumber = getsize / sizeof(ADDR);
     if (getnumber < number) number = getnumber;
     if (number) {
-      //  printf("in get group\n");
       getsize = number * sizeof(ADDR);
       groupbegin -= getsize;                                      // change thread's freeLocalStart
       memcpy(groupbegin.pVoid, memoryArrayFree.pVoid, getsize);
@@ -227,8 +226,8 @@ INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct, 
       memoryarray += sizeof(ADDR);
       memorylist += BorderSize; 
     }
-
     // Set otherBuffer
+    /*
     if (buffer) {
       memorylist = RealBlock;
       for(i=0; i<TotalNumber; i++) {
@@ -236,6 +235,7 @@ INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct, 
 	memorylist += BorderSize; 
       }
     }
+    */
   __CATCH
 }
 

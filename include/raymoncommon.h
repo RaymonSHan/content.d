@@ -53,8 +53,8 @@
 #define __CATCH_BEGIN           endCall(); return 0; error_stop:
 #define __BETWEEN(x,y)          if (ret_err >= __TO_MARK(x) && ret_err <= __TO_MARK(y))
 #define __AFTER(x)              if (ret_err >= __TO_MARK(x))
-#define __CATCH_END             return ret_err;
-#define	__CATCH                 endCall(); return 0; error_stop: return ret_err;
+#define __CATCH_END             endCall(); return ret_err;
+#define	__CATCH                 endCall(); return 0; error_stop: endCall(); return ret_err;
 #define __BREAK                 { goto error_stop; }
 #define __BREAK_OK              { ret_err = 0; goto error_stop; }
 

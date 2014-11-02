@@ -1,8 +1,10 @@
-
-// rthread.hpp
 #ifndef INCLUDE_RTHREAD_HPP
 #define INCLUDE_RTHREAD_HPP
 
+#include <sys/types.h>
+#include <signal.h>
+#include <execinfo.h>
+#include <ucontext.h>
 #include "rtype.hpp"
 
 class RThreadResource
@@ -90,8 +92,7 @@ public:
 	   info->calledInfo[i].lineInfo,			\
 	   info->calledInfo[i].funcInfo);
 
-
-#define MAX_NEST_LOOP           127                             // size of func call nest
+#define MAX_NEST_LOOP           255                             // size of func call nest
 
 typedef struct perTraceInfo {
   char  *fileInfo;
@@ -110,5 +111,50 @@ typedef struct threadTraceInfo {
 #define __D					\
   threadTraceInfo *_pt_debugtestinfo;		\
   displayTraceInfo(_pt_debugtestinfo);
+
+class RThread {
+
+
+private:
+  pid_t workId;
+  ADDR  stackStart;
+
+protected:
+  INT  nowThread;
+
+public:
+  BOOL  shouldQuit;
+  static volatile INT globalThreadNumber;
+  static volatile INT nowThreadNumber;
+
+private:
+  static int RThreadFunc(void* point);
+  virtual INT RThreadInit(void) = 0;
+  virtual INT RThreadDoing(void) = 0;
+ 
+public:
+  RThread();
+  INT RThreadClone(void);
+  inline static void RThreadCloneFinish(void) { LockDec(RThread::globalThreadNumber); };
+  INT RThreadKill();
+};
+
+class CMemoryAlloc;
+
+class RThreadGet : public RThread {
+private:
+  CMemoryAlloc *mList;
+private:
+  virtual INT RThreadInit(void);
+  virtual INT RThreadDoing(void);
+};
+
+class RThreadSchedule : public RThread {
+private:
+  CMemoryAlloc *mList;
+private:
+  virtual INT RThreadInit(void);
+  virtual INT RThreadDoing(void);
+};
 
 #endif  // INCLUDE_RTHREAD_HPP

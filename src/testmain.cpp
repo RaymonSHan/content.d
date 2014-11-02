@@ -11,18 +11,12 @@
 #include "../include/epollpool.hpp"
 #include "../include/testmain.hpp"
 
-
 #ifdef  TEST_RMEMORY
-#define __DIRECT
 
 #define THREADS                 2
 #define SCHEDULE_THREAD         1
-#define TEST_TIMES              5000000
-#define TEST_ITMES              3
 #define NUMBER_BUFFER           20
-#define GETSIZE                 4
-#define FREESIZE                4
-#define MAXSIZE                 8
+
 #ifdef  __DIRECT
 #define DIRECT                  1
 #else   // __DIRECT
@@ -41,8 +35,9 @@ void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret)
   erroraddr &= NEG_SIZE_THREAD_STACK;
 
   if (stack == erroraddr) {
-    stack.pVoid = mmap (stack.pChar + SIZE_NORMAL_PAGE, SIZE_NORMAL_PAGE, PROT_READ | PROT_WRITE,
-  			  MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
+    stack.pVoid = mmap (stack.pChar + PAD_TRACE_INFO, sizeof(threadTraceInfo), 
+			PROT_READ | PROT_WRITE,
+			MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
   } else {
     printf("Got signal %d, faulty address is %p, from %llx\n Calling: \n",
 	   sig, info->si_addr, uc->uc_mcontext.gregs[REG_RIP]);
@@ -51,55 +46,19 @@ void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret)
   }
 }
 
-int ThreadSchedule(void *para)
+CMemoryAlloc MList;
+
+CMemoryAlloc* GetContextList()
 {
-  CMemoryAlloc *clist = (CMemoryAlloc*) para;
-
-  clist->SetThreadArea(0, GETSIZE, GETSIZE, THREAD_FLAG_SCHEDULE);
-  for (;;) {
-    clist->TimeoutAll();
-#ifdef  _TESTCOUNT
-    clist->DisplayContext();
-#endif  // _TESTCOUNT
-    usleep(250000);                                           // every 0.25s
-  }
-  return 0;
-}
-
-int ThreadItem(void *para)
-{
-  __TRY
-    ADDR item[TEST_ITMES+2];
-    CMemoryAlloc *clist = (CMemoryAlloc*) para;
-
-    clist->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
-
-#ifndef __DIRECT
-  // for undirect free
-    for (int j=0; j<TEST_ITMES; j++) 
-      if (clist->GetMemoryList(item[j])) item[j]=0;
-        sleep(3);
-    for (int j=0; j<1; j++) 
-      if (clist->GetMemoryList(item[j])) item[j]=0;
-        sleep(1);
-#else  // __DIRECT
-  // for direct free
-    for (int i=0; i<TEST_TIMES; i++) {
-      for (int j=0; j<TEST_ITMES; j++) 
-	if (clist->GetMemoryList(item[j])) item[j]=0;
-      for (int j=0; j<TEST_ITMES; j++) 
-        if (item[j].aLong != 0) clist->FreeMemoryList(item[j]);
-      }
-#endif // __DIRECT
-  __CATCH
+  return &MList;
 }
 
 int main(int, char**)
 {
-  ADDR  cStack;
-  CMemoryAlloc m;
   int   status;
   struct sigaction sa;
+  RThreadGet threadGet[THREADS];
+  RThreadSchedule threadSchedule;
 
   sa.sa_sigaction = SIGSEGV_Handle;
   sigemptyset (&sa.sa_mask);
@@ -108,26 +67,23 @@ int main(int, char**)
   sigaction(SIGILL, &sa, NULL);
 
   __TRY
-    __DO(m.SetMemoryBuffer(NUMBER_BUFFER, 80, 64, DIRECT));
+    __DO(MList.SetMemoryBuffer(NUMBER_BUFFER, 80, 64, DIRECT));
     for (int i=0; i<THREADS; i++) {
-      getStack(cStack);
-      clone (&ThreadItem, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
+      threadGet[i].RThreadClone();
     }
-
 #ifndef __DIRECT
-    int sch;
-    getStack(cStack);
-    sch = clone (&ThreadSchedule, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
+    threadSchedule.RThreadClone();
 #endif // __DIRECT
-    for (int i=0; i<THREADS; i++) waitpid(-1, &status, __WCLONE);
+    RThread::RThreadCloneFinish();
 
+    for (int i=0; i<THREADS; i++) waitpid(-1, &status, __WCLONE);
 #ifndef __DIRECT
-    kill(sch, SIGTERM);
+    threadSchedule.RThreadKill();
 #endif // __DIRECT
 
 #ifdef  _TESTCOUNT              // for test function, such a multithread!
-     m.DisplayArray();
-     m.DisplayInfo();
+     MList.DisplayArray();
+     MList.DisplayInfo();
 #endif  // _TESTCOUNT
   __CATCH
 }

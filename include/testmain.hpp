@@ -1,15 +1,9 @@
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// thread for get/free and countdown                                                               //
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-int     ThreadItem(void *para);
-int     ThreadSchedule(void *para);
 
+#include "../include/rmemory.hpp"
 
-#include <signal.h>
-#include <execinfo.h>
-#include <ucontext.h>
-void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret);
+CMemoryAlloc* GetContextList();
+
 int main(int, char**);
 
 
@@ -31,3 +25,5 @@ int main(int, char**);
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 #define TEST_RMEMORY                                                                            //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
+
+void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret);
