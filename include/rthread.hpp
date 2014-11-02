@@ -13,6 +13,7 @@ public:
   static volatile INT globalResourceOffset;
 public:
   RThreadResource(INT size);
+  INT SetResourceOffset(INT size);
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +91,7 @@ public:
 	   info->calledInfo[i].funcInfo);
 
 
-#define MAX_NEST_LOOP           1023                             // size of func call nest
+#define MAX_NEST_LOOP           127                             // size of func call nest
 
 typedef struct perTraceInfo {
   char  *fileInfo;
@@ -106,7 +107,7 @@ typedef struct threadTraceInfo {
   perTraceInfo calledInfo[MAX_NEST_LOOP];
 }threadTraceInfo;
 
-#define DISPLAY					\
+#define __D					\
   threadTraceInfo *_pt_debugtestinfo;		\
   displayTraceInfo(_pt_debugtestinfo);
 

@@ -3,7 +3,6 @@
 #include <time.h>
 #include "../include/rmemory.hpp"
 
-//#define _TESTCOUNT
 volatile INT GlobalTime = 0;
 
 #ifdef  HUGE_PAGE
@@ -37,6 +36,7 @@ CMemoryAlloc::CMemoryAlloc()
 { 
   RealBlock = 0;
   TotalNumber = BorderSize = ArraySize = TotalSize = 0;
+  threadListStart = 0;
 
   InProcess = NOT_IN_PROCESS;
   pInProcess = &InProcess;
@@ -51,82 +51,6 @@ CMemoryAlloc::CMemoryAlloc()
 CMemoryAlloc::~CMemoryAlloc()
 {
   DelMemoryBuffer();
-}
-
-INT CMemoryAlloc::SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag)
-{
-  INT   id;
-  GetThreadMemoryInfo();
-
-  __TRY
-    id = LockInc(nowThread);
-    __DO(id >= MAX_SHARE_THREAD);
-
-
-    info->getSize = getsize;
-    info->freeSize = freesize;
-    info->threadFlag = flag;
-    info->localArrayStart.pAddr = &(info->localCache[MAX_LOCAL_CACHE - maxsize]);
-    info->localFreeStart. pAddr = &(info->localCache[MAX_LOCAL_CACHE]);
-    info->localArrayEnd.  pAddr = &(info->localCache[MAX_LOCAL_CACHE - 1]);
-    info->localUsedList = MARK_USED_END;
-    threadListAddr[id] = info;
-  __CATCH
-}
-
-INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct)
-{
-  ADDR  memoryarray, memoryarraylist;
-  INT   i;
-
-  __TRY
-    BorderSize = PAD_INT(size, 0, border);
-    ArraySize = number * sizeof(ADDR);
-    TotalSize = BorderSize * number + ArraySize;
-    __DO(getMemory(RealBlock, TotalSize));
-    TotalNumber = number;
-    DirectFree = direct;
-
-    __DO_(!TotalNumber, "Must call SetMemoryBuffer before SetThreadLocalArray");
-    nowThread = 0;
-    memoryArrayStart = memoryArrayFree = RealBlock + (TotalSize - ArraySize);
-    //    memoryArrayEnd =  memoryArrayStart + (TotalNumber - 1) * sizeof(ADDR);
-    memoryArrayEnd =  memoryArrayStart + TotalNumber * sizeof(ADDR);
-    memoryarray = memoryArrayStart;
-    memoryarraylist = RealBlock;
-
-    // Init global array
-    for(i=0; i<TotalNumber; i++) {
-      *(memoryarray.pAddr) = memoryarraylist;
-      memoryarray += sizeof(ADDR);
-      memoryarraylist += BorderSize; 
-    }
-  __CATCH
-}
-
-INT CMemoryAlloc::DelMemoryBuffer(void)
-{
-  return 0;
-}
-
-void CMemoryAlloc::SetListDetail(char *listname, INT directFree, INT timeout)
-{
-}
-
-INT CMemoryAlloc::GetMemoryList(ADDR &nlist)
-{
-  __TRY
-    __DO(GetOneList(nlist))
-    /*if (!DirectFree)*/ AddToUsed(nlist);
-  __CATCH
-}
-
-INT CMemoryAlloc::FreeMemoryList(ADDR nlist)
-{
-  __TRY
-    if (!DirectFree) nlist.CountDown = TIMEOUT_QUIT;
-    else __DO(FreeOneList(nlist))
-  __CATCH
 }
 
 INT CMemoryAlloc::GetOneList(ADDR &nlist)
@@ -258,14 +182,94 @@ void CMemoryAlloc::CountTimeout(ADDR usedStart)
   return;
 }
 
+INT CMemoryAlloc::SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag)
+{
+  static HANDLE_LOCK lockList = NOT_IN_PROCESS;
+  GetThreadMemoryInfo();
+
+  __TRY
+    info->getSize = getsize;
+    info->freeSize = freesize;
+    info->threadFlag = flag;
+    info->localArrayStart.pAddr = &(info->localCache[MAX_LOCAL_CACHE - maxsize]);
+    info->localFreeStart. pAddr = &(info->localCache[MAX_LOCAL_CACHE]);
+    info->localArrayEnd.  pAddr = &(info->localCache[MAX_LOCAL_CACHE - 1]);
+    info->localUsedList = MARK_USED_END;
+    __LOCK(lockList);
+    info->threadListNext = threadListStart;
+    threadListStart = info;
+    __FREE(lockList);
+  __CATCH
+}
+
+INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct, INT buffer)
+{
+  ADDR  memoryarray, memorylist;
+  INT   i;
+
+  __TRY
+    BorderSize = PAD_INT(size, 0, border);
+    ArraySize = number * sizeof(ADDR);
+    TotalSize = BorderSize * number + ArraySize;
+    __DO(getMemory(RealBlock, TotalSize));
+    TotalNumber = number;
+    DirectFree = direct;
+
+    __DO_(!TotalNumber, "Must call SetMemoryBuffer before SetThreadLocalArray");
+    memoryArrayStart = memoryArrayFree = RealBlock + (TotalSize - ArraySize);
+    memoryArrayEnd =  memoryArrayStart + TotalNumber * sizeof(ADDR);
+    memoryarray = memoryArrayStart;
+    memorylist = RealBlock;
+
+    // Init global array
+    for(i=0; i<TotalNumber; i++) {
+      *(memoryarray.pAddr) = memorylist;
+      memoryarray += sizeof(ADDR);
+      memorylist += BorderSize; 
+    }
+
+    // Set otherBuffer
+    if (buffer) {
+      memorylist = RealBlock;
+      for(i=0; i<TotalNumber; i++) {
+	memorylist.OtherBuffer = memorylist + buffer;
+	memorylist += BorderSize; 
+      }
+    }
+  __CATCH
+}
+
+INT CMemoryAlloc::DelMemoryBuffer(void)
+{
+  return 0;
+}
+
+INT CMemoryAlloc::GetMemoryList(ADDR &nlist)
+{
+  __TRY
+    __DO(GetOneList(nlist))
+    AddToUsed(nlist);
+  __CATCH
+}
+
+INT CMemoryAlloc::FreeMemoryList(ADDR nlist)
+{
+  __TRY
+    if (!DirectFree) nlist.CountDown = TIMEOUT_QUIT;
+    else __DO(FreeOneList(nlist))
+  __CATCH
+}
+
 INT CMemoryAlloc::TimeoutAll(void)
 {
-  INT   i;
-  GlobalTime = time(NULL);
-  for (i=0; i<nowThread; i++) {
-    CountTimeout(threadListAddr[i]->localUsedList);
-  }
-  return 0;
+  __TRY
+    GlobalTime = time(NULL);
+    threadMemoryInfo *list = threadListStart;
+    while (list) {
+      CountTimeout(list->localUsedList);
+      list = list->threadListNext;
+    }
+  __CATCH
 }
 
 #ifdef _TESTCOUNT
@@ -273,7 +277,7 @@ INT CMemoryAlloc::TimeoutAll(void)
 #define PRINT_COLOR(p) printf("\e[0;%sm", p)
 #define RESTORE_COLOR printf("\e[0;37m")
 
-void CMemoryAlloc::DisplayLocal(threadListInfo* info)
+void CMemoryAlloc::DisplayLocal(threadMemoryInfo* info)
 {
   ADDR list;
 
@@ -293,6 +297,7 @@ void CMemoryAlloc::DisplayLocal(threadListInfo* info)
 void CMemoryAlloc::DisplayArray(void)
 {
   INT i;
+  threadMemoryInfo *list;
   printf("Array Start:%p, Free:%p, End%p\n", 
 	 memoryArrayStart.pVoid, memoryArrayFree.pVoid, memoryArrayEnd.pVoid);
   ADDR arr = memoryArrayStart;
@@ -304,9 +309,11 @@ void CMemoryAlloc::DisplayArray(void)
   }
   RESTORE_COLOR;
 
-  for (i=0; i<nowThread; i++) {
+  list = threadListStart;
+  while(list) {
     printf("thread :%lld, ", i);
-    DisplayLocal(threadListAddr[i]);
+    DisplayLocal(list);
+    list = list->threadListNext;
   }
   printf("\n");
 }
@@ -327,22 +334,23 @@ void CMemoryAlloc::DisplayInfo(void)
 
 void CMemoryAlloc::DisplayContext(void)
 {
-  INT   i;
+  INT   i = 0;
   ADDR  nlist;
   threadMemoryInfo *info;
   GlobalTime = time(NULL);
 
-  for (i=0; i<nowThread; i++) {
-    info = threadListAddr[i];
+  info = threadListStart;
+  while (info) {
     if (info->threadFlag & THREAD_FLAG_GETMEMORY) {
       nlist = info->localUsedList;
-      printf("thread:%lld:->", i);
+      printf("thread:%lld:->", i++);
       while (nlist > MARK_MAX) {
 	printf("%p:%lld->", nlist.pVoid, nlist.CountDown);
 	nlist = nlist.UsedList;
       }
       if (info->localUsedList.aLong) printf("\n");
     }
+    info = info->threadListNext;
   }
 }
 #endif // _TESTCOUNT

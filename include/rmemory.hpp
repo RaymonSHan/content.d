@@ -9,7 +9,7 @@
 #include "rtype.hpp"
 #include "rthread.hpp"
 
-#define  _TESTCOUNT
+//#define  _TESTCOUNT
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // const for memory alloc                                                                          //
@@ -29,8 +29,6 @@
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 INT     getMemory(ADDR &addr, INT size, INT flag = 0);
 INT     getStack(ADDR &addr);
-//ADDR    getMemory(INT size, INT flag);
-//ADDR    getStack(void);
 
 class CListItem
 {
@@ -39,16 +37,17 @@ public:
   ADDR  usedList;
   // In NonDirectly free, free the item when equal TIMEOUT_QUIT
   INT   countDown;
-  // the behavior the item, for these const start with FLAG_
-  INT   listFlag;
   // point to large buffer
   ADDR  otherBuffer;
+  // the behavior the item, for these const start with FLAG_
+  INT   listFlag;
+
 };
 
 #define UsedList                pList->usedList
 #define CountDown               pList->countDown
-#define ListFlag                plist->listFlag
-#define OtherBuffer             plist->otherBuffer
+#define ListFlag                pList->listFlag
+#define OtherBuffer             pList->otherBuffer
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // per-thread info for memory alloc                                                                //
@@ -65,9 +64,9 @@ typedef struct threadMemoryInfo {
   ADDR  localFreeStart;
   ADDR  localArrayEnd;
   ADDR  localUsedList;
-  INT   pad;
+  threadMemoryInfo *threadListNext;
   ADDR  localCache[MAX_LOCAL_CACHE];
-}threadListInfo;
+}threadMemoryInfo;
 
 #define THREAD_FLAG_GETMEMORY   0x1
 #define THREAD_FLAG_SCHEDULE    0x2
@@ -89,8 +88,7 @@ private:                        // for total memory
 
 private:                        // for thread info
   INT   TotalNumber;
-  volatile INT nowThread;       // thread have SetThreadArea
-  threadListInfo                *threadListAddr[MAX_SHARE_THREAD];
+  threadMemoryInfo *threadListStart;
   ADDR  memoryArrayStart;       // array start
   ADDR  memoryArrayFree;        // free now
   ADDR  memoryArrayEnd;         // array end
@@ -104,51 +102,37 @@ private:                        // info should setup when init
   INT   TimeoutInit;
   INT   BufferSize;
 
-#ifdef _TESTCOUNT
-public:                         // statistics info for debug
-  INT   GetCount, GetSuccessCount;
-  INT   FreeCount, FreeSuccessCount;
-  INT   MinFree;
-#endif  // _TESTCOUNT
-
 public:
   CMemoryAlloc();
   ~CMemoryAlloc();
-  INT   SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag);
 
-  void  SetListDetail(char *listname, INT directFree, INT timeout);
-  INT   SetMemoryBuffer(INT number, INT size, INT border, INT direct);
-  INT   DelMemoryBuffer(void);
-
+private:
   INT   GetOneList(ADDR &nlist);
   INT   FreeOneList(ADDR nlist);
   INT   AddToUsed(ADDR nlist);
-  INT   GetMemoryList(ADDR &nlist);                             // For DirectFree mode, same as GetOneList
-  INT   FreeMemoryList(ADDR nlist);                             // For NON-Direct mode, only make a mark
-
-  void  CountTimeout(ADDR usedStart);
-  ADDR  SetBuffer(INT number, INT itemsize, INT bordersize);
-  INT   GetNumber()             { return TotalNumber; };
-//  INT   GetFreeNumber()         { return FreeNumber; };
-
-public:
   INT   GetListGroup(ADDR &groupbegin, INT number);
   INT   FreeListGroup(ADDR &groupbegin, INT number);
-  INT   SetThreadArea(INT flag);
+  void  CountTimeout(ADDR usedStart);
 
+public:
+  INT   SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag);
+  INT   SetMemoryBuffer(INT number, INT size, INT border, INT direct, INT buffer = 0);
+  INT   DelMemoryBuffer(void);
+  INT   GetMemoryList(ADDR &nlist);                             // For DirectFree mode, same as GetOneList
+  INT   FreeMemoryList(ADDR nlist);                             // For NON-Direct mode, only make a mark
   INT   TimeoutAll(void);
-#ifdef  _TESTCOUNT              // for test function, such a multithread!
+  INT   GetNumber()             { return TotalNumber; };
+
+#ifdef  _TESTCOUNT              // for test function
+public:                         // statistics info for debug
+  INT   GetCount, GetSuccessCount;
+  INT   FreeCount, FreeSuccessCount;
+  INT   MinFree;  
+  void  DisplayLocal(threadMemoryInfo* info);
+  void  DisplayArray(void);
   void  DisplayInfo(void);
   void  DisplayContext(void);
-  void  DisplayLocal(threadListInfo* info);
-  void  DisplayArray(void);
 #endif  // _TESTCOUNT
 };
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// thread for get/free and countdown                                                               //
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-int     ThreadItem(void *para);
-int     ThreadSchedule(void *para);
 
 #endif  // INCLUDE_RMEMORY_HPP

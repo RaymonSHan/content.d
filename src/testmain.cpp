@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <sched.h>
 #include <string.h>
 #include <time.h>
@@ -8,33 +9,11 @@
 #include "../include/rmemory.hpp"
 #include "../include/rthread.hpp"
 #include "../include/epollpool.hpp"
+#include "../include/testmain.hpp"
 
 
-#include <stdio.h>
-#include <signal.h>
-#include <execinfo.h>
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// This is thread test main program from. From                                                     //
-// request : raymoncommon.cpp rthread.cpp                                                          //
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-//#define TEST_THREAD
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-
-#ifdef  TEST_THREAD
-
-#endif // TEST_THREAD
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// This is rmemory test main program from. From Oct. 22 - 29 2014.                                 //
-// total program time about 50 hour, base on memoryiocp                                            //
-// request : raymoncommon.cpp rmemory.cpp                                                          //
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-#define TEST_RMEMORY                                                                            //
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-
-#define __DIRECT
 #ifdef  TEST_RMEMORY
+#define __DIRECT
 
 #define THREADS                 2
 #define SCHEDULE_THREAD         1
@@ -49,8 +28,6 @@
 #else   // __DIRECT
 #define DIRECT                  0
 #endif  // _DIRECT
-
-#include <ucontext.h>
 
 void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret)
 {
@@ -91,30 +68,30 @@ int ThreadSchedule(void *para)
 
 int ThreadItem(void *para)
 {
-__TRY
-  ADDR item[TEST_ITMES+2];
-  CMemoryAlloc *clist = (CMemoryAlloc*) para;
+  __TRY
+    ADDR item[TEST_ITMES+2];
+    CMemoryAlloc *clist = (CMemoryAlloc*) para;
 
-  clist->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
+    clist->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
 
 #ifndef __DIRECT
   // for undirect free
-  for (int j=0; j<TEST_ITMES; j++) 
-    if (clist->GetMemoryList(item[j])) item[j]=0;
-  sleep(3);
-  for (int j=0; j<1; j++) 
-    if (clist->GetMemoryList(item[j])) item[j]=0;
-  sleep(1);
-#else  // __DIRECT
-  // for direct free
-  for (int i=0; i<TEST_TIMES; i++) {
     for (int j=0; j<TEST_ITMES; j++) 
       if (clist->GetMemoryList(item[j])) item[j]=0;
-    for (int j=0; j<TEST_ITMES; j++) 
-      if (item[j].aLong != 0) clist->FreeMemoryList(item[j]);
+        sleep(3);
+    for (int j=0; j<1; j++) 
+      if (clist->GetMemoryList(item[j])) item[j]=0;
+        sleep(1);
+#else  // __DIRECT
+  // for direct free
+    for (int i=0; i<TEST_TIMES; i++) {
+      for (int j=0; j<TEST_ITMES; j++) 
+	if (clist->GetMemoryList(item[j])) item[j]=0;
+      for (int j=0; j<TEST_ITMES; j++) 
+        if (item[j].aLong != 0) clist->FreeMemoryList(item[j]);
+      }
 #endif // __DIRECT
-  }
-__CATCH
+  __CATCH
 }
 
 int main(int, char**)
@@ -128,32 +105,33 @@ int main(int, char**)
   sigemptyset (&sa.sa_mask);
   sa.sa_flags = SA_RESTART | SA_SIGINFO;
   sigaction(SIGSEGV, &sa, NULL);
+  sigaction(SIGILL, &sa, NULL);
 
- __TRY
-  __DO(m.SetMemoryBuffer(NUMBER_BUFFER, 80, 64, DIRECT));
-  for (int i=0; i<THREADS; i++) {
+  __TRY
+    __DO(m.SetMemoryBuffer(NUMBER_BUFFER, 80, 64, DIRECT));
+    for (int i=0; i<THREADS; i++) {
+      getStack(cStack);
+      clone (&ThreadItem, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
+    }
+
+#ifndef __DIRECT
+    int sch;
     getStack(cStack);
-    clone (&ThreadItem, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
-  }
-
-#ifndef __DIRECT
-  int sch;
-  getStack(cStack);
-  sch = clone (&ThreadSchedule, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
+    sch = clone (&ThreadSchedule, cStack.pChar + SIZE_THREAD_STACK, CLONE_VM | CLONE_FILES, &m);
 #endif // __DIRECT
-  for (int i=0; i<THREADS; i++) waitpid(-1, &status, __WCLONE);
+    for (int i=0; i<THREADS; i++) waitpid(-1, &status, __WCLONE);
 
 #ifndef __DIRECT
-  kill(sch, SIGTERM);
+    kill(sch, SIGTERM);
 #endif // __DIRECT
 
 #ifdef  _TESTCOUNT              // for test function, such a multithread!
-   m.DisplayArray();
-   m.DisplayInfo();
+     m.DisplayArray();
+     m.DisplayInfo();
 #endif  // _TESTCOUNT
-__CATCH
+  __CATCH
 }
-		       
+
 /*
 60M times 9.2 2thread1cpu lockfree, 11.2 2thread2cpu lockfree, 3.4*2 1thread lockfree
 60M times 5.9 2thread2cpu semi, 1.0*2 1thread semi
