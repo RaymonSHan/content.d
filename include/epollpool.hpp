@@ -1,8 +1,14 @@
 
+#ifndef INCLUDE_EPOLLPOOL_HPP
+#define INCLUDE_EPOLLPOOL_HPP
+
 #include <sys/types.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>  
 #include <netinet/in.h>
+
+#include "rmemory.hpp"
+#include "rthread.hpp"
 
 #define MAX_RPOLL_ACCEPT_THREAD         3
 #define MAX_RPOLL_READ_THREAD           4
@@ -11,83 +17,70 @@
 
 #define MAX_LISTEN_QUERY                128
 
-#define RPOLL_INIT_NULL                 0
-#define RPOLL_INIT_START                1         // do epoll things
-#define RPOLL_INIT_PREPARE              2
-#define RPOLL_INIT_SCHEDULE             3
-#define RPOLL_INIT_OK                   (0x10)
-
-#define ENOUGH_TIME_FOR_LISTEN          10000
 #define MAX_EV_NUMBER                   20
 
 #define RUN_WITH_CONSOLE                0x0000
 #define RUN_WITH_DAEMON                 0x0001
 
-class RBaseThread;
+class   RpollGlobalApp;
 
-typedef int WorkFunc(void*);
-typedef int (RBaseThread::*ClassWorkFunc)(void);
-
-struct initStruct {
-  class RpollGlobalApp *globalApp;
-  class RBaseThread *runThread;
-};
-
-class RBaseThread {
-public:
-  int *workSignalPointer;               // it point to next field workSignal normally
-  static WorkFunc RpollClone;
-  virtual int RpollFunc(void) = 0;
+class RpollThread : public RThread {
 private:
-  int workSignal;                       // schedule use piror pointer for share thread
-  pid_t workId;
+  CMemoryAlloc *contentMemory;
+  CMemoryAlloc *bufferMemory;
+
 protected:
-  class RpollGlobalApp *pApp;
-
-public:
-  inline pid_t ReturnWorkId(void) { return workId; };
-  int InitRWorkThread(class RBaseThread *from);
-};
-
-class RScheduleThread : public RBaseThread {
-public:
-  virtual int RpollFunc(void);
- 
-  //  static WorkFunc ScheduleCloneFunc;
-};
-
-class RWorkThread : public RBaseThread {
-public:
-  virtual int RpollFunc(void);
-  //  static WorkFunc WorkCloneFunc;
-};
-
-class RpollThread : public RBaseThread {
-public:
-  virtual int RpollFunc(void) = 0;
-public:
+  RpollGlobalApp* pApp;
   struct epoll_event waitEv[MAX_EV_NUMBER];
-  int epollHandle;
+
 public:
-  int AddRpollHandle(void);
-  int AddRpollWait(int handle, int flag);
+  int epollHandle;
+
+protected:
+  virtual INT RThreadInit(void);
+  virtual INT RpollThreadInit(void) = 0;
+  virtual INT RThreadDoing(void) = 0;
+  inline INT GetContent(ADDR &item) { return contentMemory->GetMemoryList(item); };
+  inline INT GetBuffer(ADDR &item) { return bufferMemory->GetMemoryList(item); };
+  inline INT FreeContent(ADDR item) { return contentMemory->FreeMemoryList(item); };
+  inline INT FreeBuffer(ADDR item) { return bufferMemory->FreeMemoryList(item); };
+
+public:
+  INT CreateRpollHandle(void);
 };
 
 class RpollAcceptThread : public RpollThread {
-public:
-  virtual int RpollFunc(void);
-  int CreateListen(struct sockaddr_in *serveraddr);
 private:
+  ADDR  listenAddr;
+  virtual INT RpollThreadInit(void);
+  virtual INT RThreadDoing(void);
+public:
+  INT CreateListen(struct sockaddr &serveraddr);
+  INT BeginListen(int query);
+};
+
+class RpollScheduleThread : public RpollThread {
+private:
+  virtual INT RpollThreadInit(void);
+  virtual INT RThreadDoing(void);
+};
+
+class RpollWorkThread : public RpollThread {
+private:
+  virtual INT RpollThreadInit(void);
+  virtual INT RThreadDoing(void);
 };
 
 class RpollReadThread : public RpollThread {
-public:
-  virtual int RpollFunc(void);
+private:
+  virtual INT RpollThreadInit(void);
+  virtual INT RThreadDoing(void);
 };
 
 class RpollWriteThread : public RpollThread {
-public:
-  virtual int RpollFunc(void);
+private:
+  virtual INT RpollThreadInit(void);
+  virtual INT RThreadDoing(void);
 };
 
 class RpollGlobalApp {
@@ -99,8 +92,8 @@ private:
   int workNow;
 
 public:
-  class RScheduleThread RScheduleGroup;
-  class RWorkThread WorkThreadGroup[MAX_WORK_THREAD];
+  class RpollScheduleThread RScheduleGroup;
+  class RpollWorkThread WorkThreadGroup[MAX_WORK_THREAD];
   class RpollAcceptThread RpollAcceptGroup[MAX_RPOLL_ACCEPT_THREAD];
   class RpollReadThread RpollReadGroup[MAX_RPOLL_READ_THREAD];
   class RpollWriteThread RpollWriteGroup[MAX_RPOLL_WRITE_THREAD];
@@ -111,17 +104,26 @@ public:
   int rpollScheduleWrite;
   int workSche;
 
-  class RWorkThread *ScheduleWorkThread[MAX_WORK_THREAD];
-  class RpollThread *ScheduleAccept[MAX_RPOLL_ACCEPT_THREAD];
-  class RpollThread *ScheduleRead[MAX_RPOLL_READ_THREAD];
-  class RpollThread *ScheduleWrite[MAX_RPOLL_WRITE_THREAD];
+public:
+  class RpollWorkThread *ScheduleWorkThread[MAX_WORK_THREAD];
+  class RpollAcceptThread *ScheduleAccept[MAX_RPOLL_ACCEPT_THREAD];
+  class RpollReadThread *ScheduleRead[MAX_RPOLL_READ_THREAD];
+  class RpollWriteThread *ScheduleWrite[MAX_RPOLL_WRITE_THREAD];
+
+private:
+  CMemoryAlloc ContentMemory;
+  CMemoryAlloc BufferMemory;
 
 public:
-  struct sockaddr_in ServerAddr;
-  int ServerListen;
+  CMemoryAlloc* ReturnContent(void) { return &ContentMemory; };
+  CMemoryAlloc* ReturnBuffer(void) { return &BufferMemory; };
+
+public:
+  struct sockaddr ServerListen;
 
   RpollGlobalApp();
-  int StartRpoll(int flag, struct sockaddr_in *serveraddr);   // start in daemon or not
-  int GetRpollStatue(void) { return rpollInitSignal; };
-  int SetRpollStatue(int oldstatue, int newstatue);
+  INT InitRpollGlobalApp(void);
+  int StartRpoll(int flag, struct sockaddr serverlisten);   // start in daemon or not
 };
+
+#endif  // INCLUDE_EPOLLPOOL_HPP

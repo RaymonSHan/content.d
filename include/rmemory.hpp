@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <sys/socket.h>  
 #include "raymoncommon.h"
 #include "rtype.hpp"
 #include "rthread.hpp"
@@ -20,7 +21,7 @@
 #define MARK_USED               0x10
 #define MARK_MAX	        0x100
 
-#define TIMEOUT_TCP             2
+#define TIMEOUT_TCP             20
 #define TIMEOUT_INFINITE        0xffffffff
 #define TIMEOUT_QUIT            2
 
@@ -43,11 +44,6 @@ public:
   INT   listFlag;
 
 };
-
-#define UsedList                pList->usedList
-#define CountDown               pList->countDown
-#define ListFlag                pList->listFlag
-#define OtherBuffer             pList->otherBuffer
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // per-thread info for memory alloc                                                                //
@@ -133,6 +129,24 @@ public:                         // statistics info for debug
   void  DisplayInfo(void);
   void  DisplayContext(void);
 #endif  // _TESTCOUNT
+};
+
+#define NUMBER_CONTENT  100
+#define NUMBER_BUFFER   150
+
+class CContentItem : public CListItem
+{
+public:
+  int   bHandle;
+  sockaddr serverSocket;
+  sockaddr clientSocket;
+  char  pad [50];
+};
+
+class CBufferItem : public CListItem
+{
+public:
+  char  pad [1024*128];
 };
 
 #endif  // INCLUDE_RMEMORY_HPP

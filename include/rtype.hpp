@@ -5,6 +5,8 @@
 #include "raymoncommon.h"
 
 class   CListItem;
+class   CContentItem;
+class   CBufferItem;
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // the important struct, for my lazy                                                               //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
@@ -24,6 +26,8 @@ typedef union assignAddress
   void  *pVoid;
   INT   *pLong;
   CListItem *pList;
+  CContentItem *pCont;
+  CBufferItem *pBuff;
   assignAddress *pAddr;
 
   ADDR_INT_SELF_OPERATION(=)
@@ -40,6 +44,15 @@ typedef union assignAddress
   assignAddress& operator = (CListItem *&one) { this->pList = one; return *this; };
   assignAddress& operator = (assignAddress *&one) { this->pAddr = one; return *this; };
 }ADDR;
+
+#define UsedList                pList->usedList
+#define CountDown               pList->countDown
+#define ListFlag                pList->listFlag
+#define OtherBuffer             pList->otherBuffer
+
+#define BHandle                 pCont->bHandle
+#define ServerSocket            pCont->serverSocket
+#define ClientSocket            pCont->clientSocket
 
 #define ADDR_ADDR_COMPARE(op)				\
   BOOL inline operator op (ADDR &one, ADDR &two) {	\

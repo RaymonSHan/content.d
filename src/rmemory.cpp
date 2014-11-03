@@ -227,7 +227,6 @@ INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct, 
       memorylist += BorderSize; 
     }
     // Set otherBuffer
-    /*
     if (buffer) {
       memorylist = RealBlock;
       for(i=0; i<TotalNumber; i++) {
@@ -235,7 +234,6 @@ INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct, 
 	memorylist += BorderSize; 
       }
     }
-    */
   __CATCH
 }
 

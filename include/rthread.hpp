@@ -113,17 +113,15 @@ typedef struct threadTraceInfo {
   displayTraceInfo(_pt_debugtestinfo);
 
 class RThread {
-
-
 private:
   pid_t workId;
   ADDR  stackStart;
 
 protected:
-  INT  nowThread;
+  BOOL  shouldQuit;
+  INT   nowThread;
 
 public:
-  BOOL  shouldQuit;
   static volatile INT globalThreadNumber;
   static volatile INT nowThreadNumber;
 
@@ -134,10 +132,15 @@ private:
  
 public:
   RThread();
+  inline pid_t ReturnWorkId(void) { return workId; };
   INT RThreadClone(void);
   inline static void RThreadCloneFinish(void) { LockDec(RThread::globalThreadNumber); };
   INT RThreadKill();
 };
+
+// a lazy way, RThreadInit will run by the order clone. after all init finish, begin Doing
+#define RWAIT(mu, val)				\
+  while (mu != val) usleep(1000)
 
 class CMemoryAlloc;
 

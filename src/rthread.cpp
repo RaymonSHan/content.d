@@ -25,10 +25,6 @@ INT RThreadResource::SetResourceOffset(INT size)
 volatile INT RThread::globalThreadNumber = 1;
 volatile INT RThread::nowThreadNumber = 0;
 
-// a lazy way, RThreadInit will run by the order clone. after all init finish, begin Doing
-#define RWAIT(mu, val)				\
-  while (mu != val) usleep(1000)
-
 RThread::RThread()
 {
   workId = 0;
@@ -68,6 +64,8 @@ int RThread::RThreadFunc(void* point)
     }
   __CATCH
 }
+
+#ifdef TEST_MEMORY
 
 #define GETSIZE                 4
 #define FREESIZE                4
@@ -128,3 +126,4 @@ INT RThreadSchedule::RThreadDoing(void)
   __CATCH
 }
 
+#endif  // TEST_MEMORY

@@ -6,116 +6,81 @@
 #include <signal.h>
 #include <errno.h>  
 #include <fcntl.h> 
-#include <arpa/inet.h>  
-#include <netinet/in.h> 
-#include <sys/socket.h>  
 #include <sys/epoll.h>
 #include <sys/wait.h>
 #include "../include/raymoncommon.h"
 #include "../include/rmemory.hpp"
 #include "../include/epollpool.hpp"
 
-int RBaseThread::RpollClone(void *init)
+#include "../include/testmain.hpp"
+
+#define GETSIZE                 4
+#define FREESIZE                4
+#define MAXSIZE                 8
+
+INT RpollThread::RThreadInit(void)
 {
-  struct initStruct *place = (struct initStruct*)init;
-  class RBaseThread *run = place->runThread;
-  run->pApp = place->globalApp;
-  run->workId = getpid();
-  run->workSignal = 0;
-  run->workSignalPointer = &run->workSignal;
-  run->RpollFunc();
-  return 0;
+  __TRY
+    pApp = ::GetApplication();
+    contentMemory = pApp->ReturnContent();
+    bufferMemory = pApp->ReturnBuffer();
+    contentMemory->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
+    bufferMemory->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
+    RpollThreadInit();
+  __CATCH
 }
 
-int RpollWriteThread::RpollFunc(void)
+INT RpollThread::CreateRpollHandle(void)
 {
-  //  printf("in write, %d\n", ReturnWorkID());
-  sleep(1000);
-  return 3;
+  __TRY
+    epollHandle = epoll_create(1);                              // size is ignored, greater than zero
+  __CATCH
 }
 
-int RWorkThread::RpollFunc(void)
+INT RpollAcceptThread::CreateListen(struct sockaddr &serveraddr)
 {
-  //  printf("in work, %d\n", ReturnWorkID());
-  sleep(1000);
-  return 3;
+  struct epoll_event ev;
+  int listenfd, status;  
+
+  __TRY
+    listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    __DO_(listenfd == -1, "Error in create socket");
+    __DO_(GetContent(listenAddr), "Error in getcontent");
+    ev.data.fd = listenAddr.BHandle = listenfd;
+    ev.events = EPOLLIN | EPOLLET;
+    status = epoll_ctl(epollHandle, EPOLL_CTL_ADD, listenfd, &ev);
+    __DO_(status == -1, "Error in epoll ctl");
+    listenAddr.ServerSocket = serveraddr;
+    status = bind(listenfd, &serveraddr, sizeof(sockaddr_in));
+    __DO_(status == -1, "Error in bind");
+  __CATCH
 }
 
-int RpollGlobalApp::SetRpollStatue(int oldstatue, int newstatue)
+INT RpollAcceptThread::BeginListen(int query)
 {
-  return __sync_val_compare_and_swap
-    (&rpollInitSignal, oldstatue, newstatue);
+  int   status;
+  __TRY
+    status = listen(listenAddr.BHandle, query);
+    __DO_(status == -1, "Error in begin listen");
+  __CATCH
 }
 
-RpollGlobalApp::RpollGlobalApp()
+INT RpollAcceptThread::RpollThreadInit(void)
 {
-  rpollInitSignal =							\
-    rpollNowAccept = rpollNowRead = rpollNowWrite = workNow = 0;
+  __TRY
+    __DO_(CreateRpollHandle(), "Error in CreatePolllHandless");
+    CreateListen(pApp->ServerListen);
+  __CATCH
 }
 
-#define CLONETHREAD(acts)						\
-  getStack(cStack);							\
-  init = (struct initStruct*)						\
-    (cStack.aLong + SIZE_THREAD_STACK - SIZE_NORMAL_PAGE);		\
-  init->globalApp = this;						\
-  init->runThread = &acts;						\
-  clone(&(RBaseThread::RpollClone), cStack.pChar + SIZE_THREAD_STACK,	\
-	CLONE_VM | CLONE_FILES, init);
-
-#define WAITFORSIGNAL(pApp, mode)					\
-  while (pApp->GetRpollStatue() != mode) usleep(ENOUGH_TIME_FOR_LISTEN);
-
-#define SETSIGNAL(pApp, oldmode, newmode)			\
-  pApp->SetRpollStatue(oldmode, newmode);			\
-  if (pApp->GetRpollStatue() != newmode) exit(-1);
-
-int RpollGlobalApp::StartRpoll(int flag, struct sockaddr_in *serveraddr)
+INT RpollAcceptThread::RThreadDoing(void)
 {
-  int i;
-  ADDR cStack;
-  struct initStruct *init;
-
-  ServerAddr = *serveraddr;
-
-  if (flag == RUN_WITH_CONSOLE) {
-    for (i=0; i<MAX_RPOLL_READ_THREAD; i++) 
-      { CLONETHREAD(RpollReadGroup[i]) }
-    for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++) 
-      { CLONETHREAD(RpollWriteGroup[i]) }
-    for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++) 
-      { CLONETHREAD(RpollAcceptGroup[i]) }
-    { CLONETHREAD(RScheduleGroup) }
-
-    WAITFORSIGNAL(this, RPOLL_INIT_OK);
-    listen(ServerListen, MAX_LISTEN_QUERY);
-  }
-  printf("OK\n");
-  return 0;
-}
-
-int RpollThread::AddRpollHandle(void)
-{
-  epollHandle = epoll_create(1);        // size is ignored, greater than zero
-  return epollHandle;
-}
-
-int RpollAcceptThread::RpollFunc(void)
-{
-  int rpollInit;
-  AddRpollHandle();
-  rpollInit = pApp->SetRpollStatue(RPOLL_INIT_NULL, RPOLL_INIT_START);
-  if (rpollInit == RPOLL_INIT_NULL) {
-    if (epollHandle == -1) perrorexit("epoll_create error");
-    CreateListen(&pApp->ServerAddr);
-    SETSIGNAL(pApp, RPOLL_INIT_START, RPOLL_INIT_PREPARE);
-  }
-
-  WAITFORSIGNAL(pApp, RPOLL_INIT_SCHEDULE);
-  SETSIGNAL(pApp, RPOLL_INIT_SCHEDULE, RPOLL_INIT_OK);
   int evNumber, i, clifd;
   socklen_t clilen;
   struct sockaddr_in cliaddr;
   struct epoll_event ev;
+
+  __TRY
   for(;;) {
     evNumber = epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, -1);
     for(i=0; i<evNumber; i++) {
@@ -127,64 +92,109 @@ int RpollAcceptThread::RpollFunc(void)
       printf("after accept\n");
     }
   }
-  return 0;
+ __CATCH
 }
 
-int RpollReadThread::RpollFunc(void)
+INT RpollReadThread::RpollThreadInit(void)
+{
+  __TRY
+    __DO_(CreateRpollHandle(), "Error in CreatePolllHandless");
+  __CATCH
+}
+
+INT RpollReadThread::RThreadDoing(void)
 {
   int evNumber, i;
-  AddRpollHandle();
-  WAITFORSIGNAL(pApp, RPOLL_INIT_SCHEDULE);
   char line[1000];
   int readed;
-  for(;;) {
+  __TRY
     evNumber = epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, -1);
     for(i=0; i<evNumber; i++) {
       readed = read(waitEv->data.fd, line, 1000);
       printf("read %d\n", readed);
     }
-  }
-  //  printf("in read, %d\n", ReturnWorkID());
-  return 2;
+  __CATCH
 }
 
-int RpollAcceptThread::CreateListen(struct sockaddr_in *serveraddr)
+INT RpollWriteThread::RpollThreadInit(void)
 {
-  struct epoll_event ev;
-  int listenfd;  
-
-  listenfd = socket(AF_INET, SOCK_STREAM, 0);
-  pApp->ServerListen = listenfd;
-  ev.data.fd = pApp->ServerListen;
-  ev.events = EPOLLIN | EPOLLET;
-  epoll_ctl(epollHandle, EPOLL_CTL_ADD, listenfd, &ev);
-  bind(listenfd,(sockaddr*)serveraddr, sizeof(sockaddr_in));
-  printf("after bind\n");
-  return 0;
+  __TRY
+  __CATCH
 }
 
-int RScheduleThread::RpollFunc(void)
+INT RpollWriteThread::RThreadDoing(void)
+{
+  __TRY
+  __CATCH
+}
+
+INT RpollWorkThread::RpollThreadInit(void)
+{
+  __TRY
+  __CATCH
+}
+
+INT RpollWorkThread::RThreadDoing(void)
+{
+  __TRY
+  __CATCH
+}
+
+INT RpollScheduleThread::RpollThreadInit(void)
+{
+  int i;
+  __TRY
+    for (i=0; i<MAX_WORK_THREAD; i++)
+      pApp->ScheduleWorkThread[i] = &(pApp->WorkThreadGroup[i]);
+    for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
+      pApp->ScheduleAccept[i] = &(pApp->RpollAcceptGroup[i]);
+    for (i=0; i<MAX_RPOLL_READ_THREAD; i++)
+      pApp->ScheduleRead[i] = &(pApp->RpollReadGroup[i]);
+    for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++)
+      pApp->ScheduleWrite[i] = &(pApp->RpollWriteGroup[i]);
+  __CATCH
+}
+
+INT RpollScheduleThread::RThreadDoing(void)
+{
+  __TRY
+  __CATCH
+}
+
+RpollGlobalApp::RpollGlobalApp()
+{
+}
+
+INT RpollGlobalApp::InitRpollGlobalApp(void)
+{
+  __TRY
+    __DO(ContentMemory.SetMemoryBuffer(NUMBER_CONTENT, sizeof(CContentItem), SIZE_CACHE, false));
+    __DO(BufferMemory.SetMemoryBuffer(NUMBER_BUFFER, sizeof(CBufferItem), SIZE_NORMAL_PAGE, true));
+  __CATCH
+}
+
+int RpollGlobalApp::StartRpoll(int flag, struct sockaddr serverlisten)
 {
   int i;
 
-  WAITFORSIGNAL(pApp, RPOLL_INIT_PREPARE);
-
-  for (i=0; i<MAX_WORK_THREAD; i++)
-    pApp->ScheduleWorkThread[i] = &(pApp->WorkThreadGroup[i]);
-  for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
-    pApp->ScheduleAccept[i] = &(pApp->RpollAcceptGroup[i]);
-  for (i=0; i<MAX_RPOLL_READ_THREAD; i++)
-    pApp->ScheduleRead[i] = &(pApp->RpollReadGroup[i]);
-  for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++)
-    pApp->ScheduleWrite[i] = &(pApp->RpollWriteGroup[i]);
-
-  SETSIGNAL(pApp, RPOLL_INIT_PREPARE, RPOLL_INIT_SCHEDULE);
-  sleep(1000);
+  ServerListen = serverlisten;
+  if (flag == RUN_WITH_CONSOLE) {
+    for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++) 
+      { RpollAcceptGroup[i].RThreadClone(); }
+    for (i=0; i<MAX_RPOLL_READ_THREAD; i++) 
+      { RpollReadGroup[i].RThreadClone(); }
+    for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++) 
+      { RpollWriteGroup[i].RThreadClone(); }
+    { RScheduleGroup.RThreadClone(); }
+__D
+    RThread::RThreadCloneFinish();
+    RpollAcceptGroup[0].BeginListen(10);
+  }
+  printf("OK\n");
   return 0;
 }
 
-class RpollGlobalApp RpollApp;
-
+/*
 void killAllChild(int)
 {
   static int havedone= 0;
@@ -200,28 +210,5 @@ void killAllChild(int)
   for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++)
     kill(RpollApp.RpollWriteGroup[i].ReturnWorkId(), SIGTERM);
 }
-
-/*
-int main (int, char**)
-{
-  struct sockaddr_in addr;
-  char local_addr[] = "127.0.0.1";    
-  bzero(&addr, sizeof(sockaddr_in));   
-  addr.sin_family = AF_INET; 
-  inet_aton(local_addr,&(addr.sin_addr));
-  addr.sin_port=htons(8998);  
-  RpollApp.StartRpoll(RUN_WITH_CONSOLE, &addr);
-
-  int status;
-  pid_t retthread;
-
-  if (signal(SIGTERM, killAllChild) == SIG_ERR) exit(1);
-
-  retthread = waitpid(-1, &status, __WCLONE);
-  printf("after wait %d\n", retthread);
-  killAllChild(0);
-  printf("after kill\n");
-  // the listen() add at last
-  return (EXIT_SUCCESS);
-}
 */
+
