@@ -42,7 +42,6 @@ public:
   ADDR  otherBuffer;
   // the behavior the item, for these const start with FLAG_
   INT   listFlag;
-
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -138,15 +137,24 @@ class CContentItem : public CListItem
 {
 public:
   int   bHandle;
-  sockaddr serverSocket;
-  sockaddr clientSocket;
-  char  pad [50];
+  SOCKADDR serverSocket;
+  SOCKADDR clientSocket;
+  CContentItem *pNextPeer;
+  CContentItem *pPrevPeer;
+  CContentItem *moreContent;
+  CBufferItem  *moreBuffer;
+  CBufferItem  *otherBuffer;
+  CMemoryAlloc *contentType;
+  // CApplication * pApplication
 };
-
+ 
 class CBufferItem : public CListItem
 {
 public:
+  INT   nProcessSize;
+  INT   nOperation;
+  CMemoryAlloc *bufferType;
   char  pad [1024*128];
 };
 
-#endif  // INCLUDE_RMEMORY_HPP
+#endif

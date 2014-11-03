@@ -30,12 +30,13 @@ RThread::RThread()
   workId = 0;
   stackStart = 0;
   shouldQuit = 0;
-  nowThread = LockInc(RThread::globalThreadNumber) - 1;
+  nowThread = 0;
 }
 
 INT RThread::RThreadClone(void)
 {
   __TRY
+    nowThread = LockInc(RThread::globalThreadNumber) - 1;
     __DO(getStack(stackStart));
     workId = clone(&(RThread::RThreadFunc), stackStart.pChar + SIZE_THREAD_STACK, 
 		   CLONE_VM | CLONE_FILES, this);

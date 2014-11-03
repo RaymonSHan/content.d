@@ -13,6 +13,8 @@
 #include "../include/epollpool.hpp"
 #include "../include/testmain.hpp"
 
+RpollGlobalApp RpollApp;
+
 void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret)
 {
   ADDR  stack, erroraddr;
@@ -32,6 +34,7 @@ void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret)
     printf("Got signal %d, faulty address is %p, from %llx\n Calling: \n",
 	   sig, info->si_addr, uc->uc_mcontext.gregs[REG_RIP]);
     displayTraceInfo(tinfo);
+    RpollApp.KillAllChild();
     exit(-1);
   }
 }
@@ -48,18 +51,13 @@ void SetupSIG(int num, SigHandle func)
 
 #ifdef  TEST_THREAD
 
-RpollGlobalApp RpollApp;
 
 RpollGlobalApp* GetApplication()
 {
   return &RpollApp;
 }
 
-typedef union SOCKADDR
-{
-  sockaddr_in addrin;
-  sockaddr addr;
-}SOCKADDR;
+
 
 int main (int, char**)
 {
@@ -69,37 +67,22 @@ int main (int, char**)
  
   SetupSIG(SIGSEGV, SIGSEGV_Handle);
   SetupSIG(SIGILL, SIGSEGV_Handle);
+  SetupSIG(SIGTERM, SIGSEGV_Handle);
 
   __TRY
-    RpollApp.InitRpollGlobalApp();
+    RpollApp.InitRpollGlobalApp();                              // setup memory
 
-  printf("%lld, %lld\n", RThread::nowThreadNumber, RThread::globalThreadNumber);
- sleep(2);
-  printf("%lld, %lld\n", RThread::nowThreadNumber, RThread::globalThreadNumber);
+    bzero(&addr.saddrin, sizeof(sockaddr_in));   
+    addr.saddrin.sin_family = AF_INET; 
+    inet_aton(local_addr,&(addr.saddrin.sin_addr));
+    addr.saddrin.sin_port=htons(8998);
 
+    RpollApp.StartRpoll(RUN_WITH_CONSOLE, addr.saddr);
 
-    bzero(&addr.addrin, sizeof(sockaddr_in));   
-    addr.addrin.sin_family = AF_INET; 
-    inet_aton(local_addr,&(addr.addrin.sin_addr));
-    addr.addrin.sin_port=htons(8998);  
-    RpollApp.StartRpoll(RUN_WITH_CONSOLE, addr.addr);
     retthread = waitpid(-1, &status, __WCLONE);
-
-
-  /*
-  if (signal(SIGTERM, killAllChild) == SIG_ERR) exit(1);
-
-
-  printf("after wait %d\n", retthread);
-  killAllChild(0);
-  printf("after kill\n");
-  // the listen() add at last
-  return (EXIT_SUCCESS);
-  */
+    RpollApp.KillAllChild();
   __CATCH
 }
-
-
 
 #endif  // TEST_THREAD
 

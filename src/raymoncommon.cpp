@@ -6,12 +6,6 @@
 #include "../include/raymoncommon.h"
 #include "../include/rthread.hpp"
 
-void perrorexit(const char* s)
-{
-  perror(s);
-  exit(-1);
-}
-
 void __MESSAGE(INT level, const char * _Format, ...) 
 {
   va_list ap;

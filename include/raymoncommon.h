@@ -111,9 +111,4 @@ void    __MESSAGE(INT level, const char * _Format, ...);
 #define __LOCK(lock)            while(!CmpExg(&lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREE(lock)            lock = NOT_IN_PROCESS;
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// Common                                                                                          //
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-void    perrorexit(const char* s);
-
 #endif  // INCLUDE_RAYMONCOMMON_H

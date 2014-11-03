@@ -86,7 +86,7 @@ public:
 #define displayTraceInfo(info)					\
   getTraceInfo(info);						\
   for (int i=0; i<info->nowLevel/sizeof(perTraceInfo); i++)	\
-    printf("  %d, in file:%14s, line:%4lld, function:%s\n",	\
+    printf("  %d, in file:%14s, line:%4lld, func: %s\n",	\
 	   i,							\
 	   info->calledInfo[i].fileInfo,			\
 	   info->calledInfo[i].lineInfo,			\

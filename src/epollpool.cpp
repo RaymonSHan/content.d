@@ -50,7 +50,7 @@ INT RpollAcceptThread::CreateListen(struct sockaddr &serveraddr)
     ev.events = EPOLLIN | EPOLLET;
     status = epoll_ctl(epollHandle, EPOLL_CTL_ADD, listenfd, &ev);
     __DO_(status == -1, "Error in epoll ctl");
-    listenAddr.ServerSocket = serveraddr;
+    listenAddr.ServerSocket.saddr = serveraddr;
     status = bind(listenfd, &serveraddr, sizeof(sockaddr_in));
     __DO_(status == -1, "Error in bind");
   __CATCH
@@ -81,17 +81,19 @@ INT RpollAcceptThread::RThreadDoing(void)
   struct epoll_event ev;
 
   __TRY
-  for(;;) {
+    //  for(;;) {
     evNumber = epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, -1);
     for(i=0; i<evNumber; i++) {
       printf("in accept\n");
+      printf("%d\n", waitEv->data.fd);
       clifd = accept(waitEv->data.fd, (sockaddr*)&cliaddr, &clilen);
+      printf("2  :%d\n", waitEv->data.fd);
       ev.data.fd = clifd;
       ev.events = EPOLLIN | EPOLLET;
       epoll_ctl(pApp->ScheduleRead[0]->epollHandle, EPOLL_CTL_ADD, clifd, &ev);
       printf("after accept\n");
     }
-  }
+    //  }
  __CATCH
 }
 
@@ -125,6 +127,7 @@ INT RpollWriteThread::RpollThreadInit(void)
 INT RpollWriteThread::RThreadDoing(void)
 {
   __TRY
+    sleep(1);
   __CATCH
 }
 
@@ -137,6 +140,7 @@ INT RpollWorkThread::RpollThreadInit(void)
 INT RpollWorkThread::RThreadDoing(void)
 {
   __TRY
+    sleep(1);
   __CATCH
 }
 
@@ -158,6 +162,7 @@ INT RpollScheduleThread::RpollThreadInit(void)
 INT RpollScheduleThread::RThreadDoing(void)
 {
   __TRY
+    sleep(1);
   __CATCH
 }
 
@@ -173,42 +178,45 @@ INT RpollGlobalApp::InitRpollGlobalApp(void)
   __CATCH
 }
 
-int RpollGlobalApp::StartRpoll(int flag, struct sockaddr serverlisten)
+INT RpollGlobalApp::StartRpoll(int flag, struct sockaddr serverlisten)
 {
   int i;
 
-  ServerListen = serverlisten;
-  if (flag == RUN_WITH_CONSOLE) {
-    for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++) 
-      { RpollAcceptGroup[i].RThreadClone(); }
-    for (i=0; i<MAX_RPOLL_READ_THREAD; i++) 
-      { RpollReadGroup[i].RThreadClone(); }
-    for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++) 
-      { RpollWriteGroup[i].RThreadClone(); }
-    { RScheduleGroup.RThreadClone(); }
-__D
-    RThread::RThreadCloneFinish();
-    RpollAcceptGroup[0].BeginListen(10);
-  }
-  printf("OK\n");
-  return 0;
+  __TRY
+    ServerListen = serverlisten;
+    if (flag == RUN_WITH_CONSOLE) {
+      for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++) 
+	{ RpollAcceptGroup[i].RThreadClone(); }
+      for (i=0; i<MAX_RPOLL_READ_THREAD; i++) 
+        { RpollReadGroup[i].RThreadClone(); }
+      for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++) 
+        { RpollWriteGroup[i].RThreadClone(); }
+      { RScheduleGroup.RThreadClone(); }
+
+    // wait for all init finished
+      RWAIT(RThread::nowThreadNumber, RThread::globalThreadNumber - 1); 
+      RpollAcceptGroup[0].BeginListen(10);
+      RThread::RThreadCloneFinish();
+    }
+    printf("OK\n");
+  __CATCH
 }
 
-/*
-void killAllChild(int)
+INT RpollGlobalApp::KillAllChild(void)
 {
-  static int havedone= 0;
+  static int havedone = 0;
   int i;
-  if (havedone) return;
+  if (havedone) return 0;
   else havedone = 1;
-  for (i=0; i<MAX_WORK_THREAD; i++)
-    kill(RpollApp.WorkThreadGroup[i].ReturnWorkId(), SIGTERM);
-  for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
-    kill(RpollApp.RpollAcceptGroup[i].ReturnWorkId(), SIGTERM);
-  for (i=0; i<MAX_RPOLL_READ_THREAD; i++)
-    kill(RpollApp.RpollReadGroup[i].ReturnWorkId(), SIGTERM);
-  for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++)
-    kill(RpollApp.RpollWriteGroup[i].ReturnWorkId(), SIGTERM);
+  __TRY
+    for (i=0; i<MAX_WORK_THREAD; i++)
+      kill(WorkThreadGroup[i].ReturnWorkId(), SIGTERM);
+    for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
+      kill(RpollAcceptGroup[i].ReturnWorkId(), SIGTERM);
+    for (i=0; i<MAX_RPOLL_READ_THREAD; i++)
+      kill(RpollReadGroup[i].ReturnWorkId(), SIGTERM);
+    for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++)
+      kill(RpollWriteGroup[i].ReturnWorkId(), SIGTERM);
+  __CATCH
 }
-*/
 

@@ -2,6 +2,7 @@
 #ifndef INCLUDE_RTYPE_HPP
 #define INCLUDE_RTYPE_HPP
 
+#include <arpa/inet.h>
 #include "raymoncommon.h"
 
 class   CListItem;
@@ -126,14 +127,10 @@ typedef union assignAddress
   ADDR_PLONG_COMPARE(<)
   ADDR_PLONG_COMPARE(<=)
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// pad size for border, stack must at 2^n border                                                   //
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-#define PAD_SIZE(p, pad, bord)				\
-  ((sizeof(p) + pad - 1) & (-1 * bord)) + bord
-#define PAD_INT(p, pad, bord)				\
-  ((p + pad - 1) & (-1 * bord)) + bord
-#define PAD_ADDR(p, pad, bord)				\
-  ((p.aLong + pad - 1) & (-1 * bord)) + bord
+typedef union SOCKADDR
+{
+  sockaddr_in saddrin;
+  sockaddr saddr;
+}SOCKADDR;
 
 #endif  // INCLUDE_RTYPE_HPP

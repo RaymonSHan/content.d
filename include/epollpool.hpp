@@ -10,10 +10,10 @@
 #include "rmemory.hpp"
 #include "rthread.hpp"
 
-#define MAX_RPOLL_ACCEPT_THREAD         3
-#define MAX_RPOLL_READ_THREAD           4
-#define MAX_RPOLL_WRITE_THREAD          2
-#define MAX_WORK_THREAD                 16
+#define MAX_RPOLL_ACCEPT_THREAD         1
+#define MAX_RPOLL_READ_THREAD           1
+#define MAX_RPOLL_WRITE_THREAD          1
+#define MAX_WORK_THREAD                 1
 
 #define MAX_LISTEN_QUERY                128
 
@@ -123,7 +123,9 @@ public:
 
   RpollGlobalApp();
   INT InitRpollGlobalApp(void);
-  int StartRpoll(int flag, struct sockaddr serverlisten);   // start in daemon or not
+  INT StartRpoll(int flag, struct sockaddr serverlisten);   // start in daemon or not
+  INT KillAllChild(void);
+
 };
 
 #endif  // INCLUDE_EPOLLPOOL_HPP
