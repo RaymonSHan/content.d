@@ -2,7 +2,6 @@
 #ifndef INCLUDE_RTYPE_HPP
 #define INCLUDE_RTYPE_HPP
 
-#include <arpa/inet.h>
 #include "raymoncommon.h"
 
 class   CListItem;

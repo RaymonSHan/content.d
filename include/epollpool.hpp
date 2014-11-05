@@ -3,9 +3,6 @@
 #define INCLUDE_EPOLLPOOL_HPP
 
 #include <sys/types.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>  
-#include <netinet/in.h>
 
 #include "rmemory.hpp"
 #include "rthread.hpp"
@@ -24,8 +21,9 @@
 
 class   RpollGlobalApp;
 
-class RpollThread : public RThread {
-private:
+__CLASS(RpollThread, RThread)
+//class RpollThread : public RThread {
+public:
   CMemoryAlloc *contentMemory;
   CMemoryAlloc *bufferMemory;
 
@@ -49,7 +47,8 @@ public:
   INT CreateRpollHandle(void);
 };
 
-class RpollAcceptThread : public RpollThread {
+__CLASS(RpollAcceptThread, RpollThread)
+//class RpollAcceptThread : public RpollThread {
 private:
   ADDR  listenAddr;
   virtual INT RpollThreadInit(void);

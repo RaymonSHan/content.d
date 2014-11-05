@@ -1,13 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>      
-#include <strings.h>               
-#include <sched.h>
-#include <signal.h>
-#include <errno.h>  
-#include <fcntl.h> 
-#include <sys/epoll.h>
-#include <sys/wait.h>
+
+
 #include "../include/raymoncommon.h"
 #include "../include/rmemory.hpp"
 #include "../include/epollpool.hpp"
@@ -24,16 +16,18 @@ INT RpollThread::RThreadInit(void)
     pApp = ::GetApplication();
     contentMemory = pApp->ReturnContent();
     bufferMemory = pApp->ReturnBuffer();
-    contentMemory->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
-    bufferMemory->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY);
-    RpollThreadInit();
+    __DO (contentMemory->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY));
+    __DO (bufferMemory->SetThreadArea(GETSIZE, MAXSIZE, FREESIZE, THREAD_FLAG_GETMEMORY));
+    __DO (CreateRpollHandle());
+    __DO (RpollThreadInit());
   __CATCH
 }
 
 INT RpollThread::CreateRpollHandle(void)
 {
   __TRY
-    epollHandle = epoll_create(1);                              // size is ignored, greater than zero
+    // size is ignored, greater than zero
+    __DO1_(epollHandle, epoll_create(1), "Error in create epoll");
   __CATCH
 }
 
@@ -43,16 +37,21 @@ INT RpollAcceptThread::CreateListen(struct sockaddr &serveraddr)
   int listenfd, status;  
 
   __TRY
-    listenfd = socket(AF_INET, SOCK_STREAM, 0);
-    __DO_(listenfd == -1, "Error in create socket");
-    __DO_(GetContent(listenAddr), "Error in getcontent");
+    __DO1_(listenfd, 
+	   socket(AF_INET, SOCK_STREAM, 0), 
+	   "Error in create socket");
+    __DO_ (GetContent(listenAddr), 
+	   "Error in getcontent");
+
     ev.data.fd = listenAddr.BHandle = listenfd;
     ev.events = EPOLLIN | EPOLLET;
-    status = epoll_ctl(epollHandle, EPOLL_CTL_ADD, listenfd, &ev);
-    __DO_(status == -1, "Error in epoll ctl");
+    __DO1_(status, 
+	   epoll_ctl(epollHandle, EPOLL_CTL_ADD, listenfd, &ev), 
+	   "Error in epoll ctl");
     listenAddr.ServerSocket.saddr = serveraddr;
-    status = bind(listenfd, &serveraddr, sizeof(sockaddr_in));
-    __DO_(status == -1, "Error in bind");
+    __DO1_(status, 
+	   bind(listenfd, &serveraddr, sizeof(sockaddr_in)), 
+	   "Error in bind");
   __CATCH
 }
 
@@ -60,16 +59,18 @@ INT RpollAcceptThread::BeginListen(int query)
 {
   int   status;
   __TRY
-    status = listen(listenAddr.BHandle, query);
-    __DO_(status == -1, "Error in begin listen");
+    __DO1_(status, 
+	   listen(listenAddr.BHandle, query), 
+	   "Error in begin listen");
   __CATCH
 }
 
 INT RpollAcceptThread::RpollThreadInit(void)
 {
+  setClassName();
+
   __TRY
-    __DO_(CreateRpollHandle(), "Error in CreatePolllHandless");
-    CreateListen(pApp->ServerListen);
+    __DO (CreateListen(pApp->ServerListen));
   __CATCH
 }
 
@@ -81,26 +82,26 @@ INT RpollAcceptThread::RThreadDoing(void)
   struct epoll_event ev;
 
   __TRY
-    //  for(;;) {
-    evNumber = epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, -1);
+    __DO1_(evNumber, 
+	   epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, 1000*100), 
+	   "Error in epoll wait");
     for(i=0; i<evNumber; i++) {
-      printf("in accept\n");
-      printf("%d\n", waitEv->data.fd);
-      clifd = accept(waitEv->data.fd, (sockaddr*)&cliaddr, &clilen);
-      printf("2  :%d\n", waitEv->data.fd);
+      __DO1_(clifd, 
+	     accept(waitEv->data.fd, (sockaddr*)&cliaddr, &clilen), 
+	     "Error in accept");
       ev.data.fd = clifd;
       ev.events = EPOLLIN | EPOLLET;
-      epoll_ctl(pApp->ScheduleRead[0]->epollHandle, EPOLL_CTL_ADD, clifd, &ev);
-      printf("after accept\n");
+      __DO_ (epoll_ctl(pApp->ScheduleRead[0]->epollHandle, EPOLL_CTL_ADD, clifd, &ev), 
+	     "Error in epoll ctl");
     }
-    //  }
  __CATCH
 }
 
 INT RpollReadThread::RpollThreadInit(void)
 {
+  setClassName();
   __TRY
-    __DO_(CreateRpollHandle(), "Error in CreatePolllHandless");
+    __DO(CreateRpollHandle());
   __CATCH
 }
 
@@ -110,8 +111,10 @@ INT RpollReadThread::RThreadDoing(void)
   char line[1000];
   int readed;
   __TRY
-    evNumber = epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, -1);
-    for(i=0; i<evNumber; i++) {
+    __DO1_(evNumber, 
+	   epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, 1000*100), 
+	   "Error in epoll wait");
+    for(i = 0; i < evNumber; i++) {
       readed = read(waitEv->data.fd, line, 1000);
       printf("read %d\n", readed);
     }
@@ -120,6 +123,7 @@ INT RpollReadThread::RThreadDoing(void)
 
 INT RpollWriteThread::RpollThreadInit(void)
 {
+  setClassName();
   __TRY
   __CATCH
 }
@@ -133,6 +137,7 @@ INT RpollWriteThread::RThreadDoing(void)
 
 INT RpollWorkThread::RpollThreadInit(void)
 {
+  setClassName();
   __TRY
   __CATCH
 }
@@ -146,6 +151,7 @@ INT RpollWorkThread::RThreadDoing(void)
 
 INT RpollScheduleThread::RpollThreadInit(void)
 {
+  setClassName();
   int i;
   __TRY
     for (i=0; i<MAX_WORK_THREAD; i++)
@@ -162,7 +168,14 @@ INT RpollScheduleThread::RpollThreadInit(void)
 INT RpollScheduleThread::RThreadDoing(void)
 {
   __TRY
-    sleep(1);
+
+    contentMemory->DisplayFree();
+
+
+
+
+    sleep(2);
+
   __CATCH
 }
 
@@ -186,16 +199,15 @@ INT RpollGlobalApp::StartRpoll(int flag, struct sockaddr serverlisten)
     ServerListen = serverlisten;
     if (flag == RUN_WITH_CONSOLE) {
       for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++) 
-	{ RpollAcceptGroup[i].RThreadClone(); }
+	__DO(RpollAcceptGroup[i].RThreadClone());
       for (i=0; i<MAX_RPOLL_READ_THREAD; i++) 
-        { RpollReadGroup[i].RThreadClone(); }
+        __DO(RpollReadGroup[i].RThreadClone());
       for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++) 
-        { RpollWriteGroup[i].RThreadClone(); }
-      { RScheduleGroup.RThreadClone(); }
+        __DO(RpollWriteGroup[i].RThreadClone());
+      __DO(RScheduleGroup.RThreadClone());
 
-    // wait for all init finished
-      RWAIT(RThread::nowThreadNumber, RThread::globalThreadNumber - 1); 
-      RpollAcceptGroup[0].BeginListen(10);
+      RThread::RThreadWaitInit();
+      __DO(RpollAcceptGroup[0].BeginListen(10));
       RThread::RThreadCloneFinish();
     }
     printf("OK\n");
@@ -209,14 +221,14 @@ INT RpollGlobalApp::KillAllChild(void)
   if (havedone) return 0;
   else havedone = 1;
   __TRY
-    for (i=0; i<MAX_WORK_THREAD; i++)
-      kill(WorkThreadGroup[i].ReturnWorkId(), SIGTERM);
     for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
       kill(RpollAcceptGroup[i].ReturnWorkId(), SIGTERM);
     for (i=0; i<MAX_RPOLL_READ_THREAD; i++)
       kill(RpollReadGroup[i].ReturnWorkId(), SIGTERM);
     for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++)
       kill(RpollWriteGroup[i].ReturnWorkId(), SIGTERM);
+    for (i=0; i<MAX_WORK_THREAD; i++)
+      kill(WorkThreadGroup[i].ReturnWorkId(), SIGTERM);
   __CATCH
 }
 

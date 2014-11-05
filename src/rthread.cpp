@@ -1,8 +1,4 @@
 // rthread.cpp
-#include <sched.h>
-#include <unistd.h>
-#include <sys/wait.h>
-
 
 #include "../include/rthread.hpp"
 #include "../include/testmain.hpp"
@@ -32,15 +28,17 @@ RThread::RThread()
   shouldQuit = 0;
   nowThread = 0;
 }
+#include <typeinfo>
 
 INT RThread::RThreadClone(void)
 {
   __TRY
     nowThread = LockInc(RThread::globalThreadNumber) - 1;
-    __DO(getStack(stackStart));
-    workId = clone(&(RThread::RThreadFunc), stackStart.pChar + SIZE_THREAD_STACK, 
-		   CLONE_VM | CLONE_FILES, this);
-    __DO_(workId == -1, "Error for clone");
+    __DO  (getStack(stackStart));
+    __DO1_(workId, 
+	   clone(&(RThread::RThreadFunc), stackStart.pChar + SIZE_THREAD_STACK, 
+		 CLONE_VM | CLONE_FILES, this), 
+	   "Error for clone");
   __CATCH
 }
 
@@ -60,8 +58,8 @@ int RThread::RThreadFunc(void* point)
     __DO(thread->RThreadInit());
     LockInc(RThread::nowThreadNumber);
     RWAIT(RThread::nowThreadNumber, RThread::globalThreadNumber);
-    while (!thread->shouldQuit) {
-      __DO(thread->RThreadDoing());
+    while (!thread->shouldQuit) {                               // Do NOT add __DO 
+      thread->RThreadDoing();                                   // continuous even error
     }
   __CATCH
 }

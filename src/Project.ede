@@ -16,6 +16,6 @@
     )
    )
   :makefile-type 'Makefile.am
-  :variables '(("AM_CPPFLAGS" . "-m64 -I../include"))
+  :variables '(("AM_CPPFLAGS" . "-m64 -I../include -std=c++11"))
   :configuration-variables 'nil
   )

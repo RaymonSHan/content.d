@@ -2,7 +2,25 @@
 #ifndef INCLUDE_RAYMONCOMMON_H
 #define INCLUDE_RAYMONCOMMON_H
 
-#include   <stdarg.h>
+#include <errno.h>
+#include <fcntl.h> 
+#include <sched.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+#include <sys/epoll.h>
+#include <sys/mman.h>
+#include <sys/socket.h> 
+#include <sys/types.h>
+#include <sys/wait.h>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Common const                                                                                    //
@@ -70,6 +88,14 @@ void    __MESSAGE(INT level, const char * _Format, ...);
   { __MESSAGE(level, _Format,##__VA_ARGS__); \
     ret_err = 0; goto error_stop;}
 
+#define __DO1c_(val, func, _Format,...) {				\
+    setLine();								\
+    val = func;								\
+    if (val == -1) 							\
+      __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
+  }
+#define __DO1c(func)            __DO1c_(func, NULL)
+
 #define __DOc_(func, _Format,...) {					\
     setLine();								\
     if (func)								\
@@ -77,12 +103,22 @@ void    __MESSAGE(INT level, const char * _Format, ...);
   }
 #define __DOc(func)             __DOc_(func, NULL)
 
+#define __DO1_(val, func, _Format,...) {				\
+    setLine();								\
+    val = func;								\
+    if (val == -1) {							\
+      __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
+      __BREAK								\
+    }									\
+  }
+#define __DO1(func)             __DO1_(func, NULL)
+
 #define __DO_(func, _Format,...) {					\
     setLine();								\
     if (func) {								\
       __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
       __BREAK								\
-    }								\
+    }									\
   }
 #define __DO(func)              __DO_(func, NULL)
 
@@ -110,5 +146,13 @@ void    __MESSAGE(INT level, const char * _Format, ...);
 #define __FREEp(lock)           *lock = NOT_IN_PROCESS;
 #define __LOCK(lock)            while(!CmpExg(&lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREE(lock)            lock = NOT_IN_PROCESS;
+
+#define __CLASS_(name)          class name { public: const char *__CLASS__ = #name; private:
+#define __CLASS(name, base)     class name : public base {  public: const char *__CLASS__ = #name;
+#define setClassName()				\
+  threadTraceInfo* info;			\
+  getTraceInfo(info);				\
+  info->className = __CLASS__;
+
 
 #endif  // INCLUDE_RAYMONCOMMON_H

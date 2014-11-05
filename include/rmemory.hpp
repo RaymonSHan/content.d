@@ -2,16 +2,12 @@
 #ifndef INCLUDE_RMEMORY_HPP
 #define INCLUDE_RMEMORY_HPP
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/mman.h>
-#include <sys/socket.h>  
 #include "raymoncommon.h"
 #include "rtype.hpp"
 #include "rthread.hpp"
 
-#define  _TESTCOUNT
-//#define  __DIRECT
+//#define  _TESTCOUNT
+#define  __DIRECT
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // const for memory alloc                                                                          //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
@@ -49,7 +45,7 @@ public:
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 
 #define MAX_LOCAL_CACHE         16                              // by test, 10 cache is enough
-#define MAX_SHARE_THREAD        128                             // an array save threadMemoryInfo addr
+//#define MAX_SHARE_THREAD        128                             // an array save threadMemoryInfo addr
 
 typedef struct threadMemoryInfo {
   INT   getSize;
@@ -107,7 +103,7 @@ private:
   INT   AddToUsed(ADDR nlist);
   INT   GetListGroup(ADDR &groupbegin, INT number);
   INT   FreeListGroup(ADDR &groupbegin, INT number);
-  void  CountTimeout(ADDR usedStart);
+  INT   CountTimeout(ADDR usedStart);
 
 public:
   INT   SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag);
@@ -117,6 +113,8 @@ public:
   INT   FreeMemoryList(ADDR nlist);                             // For NON-Direct mode, only make a mark
   INT   TimeoutAll(void);
   INT   GetNumber()             { return TotalNumber; };
+  
+  void  DisplayFree(void);
 
 #ifdef  _TESTCOUNT              // for test function
 public:                         // statistics info for debug

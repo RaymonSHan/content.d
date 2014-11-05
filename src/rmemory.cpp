@@ -1,6 +1,3 @@
-#include <string.h>
-#include <unistd.h>
-#include <time.h>
 #include "../include/rmemory.hpp"
 
 volatile INT GlobalTime = 0;
@@ -26,8 +23,9 @@ INT getMemory(ADDR &addr, INT size, INT flag)
 INT getStack(ADDR &stack)
 {
   __TRY
-    __DO(getMemory(stack, SIZE_THREAD_STACK, MAP_GROWSDOWN));
-    __DO_(stack.aLong & (SIZE_THREAD_STACK - 1), "Error stack place:%p", stack.pVoid);
+    __DO (getMemory(stack, SIZE_THREAD_STACK, MAP_GROWSDOWN));
+    __DO_(stack.aLong & (SIZE_THREAD_STACK - 1), 
+	  "Error stack place:%p", stack.pVoid);
   __CATCH
 }
 
@@ -56,15 +54,16 @@ CMemoryAlloc::~CMemoryAlloc()
 INT CMemoryAlloc::GetOneList(ADDR &nlist)
 {
   GetThreadMemoryInfo();
+
   __TRY
 #ifdef _TESTCOUNT
     LockInc(GetCount);
 #endif // _TESTCOUNT
-
     if (info->localFreeStart > info->localArrayEnd) {
       GetListGroup(info->localFreeStart, info->getSize);
     }
-    __DO(info->localFreeStart > info->localArrayEnd);
+    __DO_(info->localFreeStart > info->localArrayEnd,
+	  "No more list CMemoryAlloc %p", this);
     nlist = *(info->localFreeStart.pAddr);
     info->localFreeStart += sizeof(ADDR);
 #ifdef _TESTCOUNT
@@ -86,7 +85,7 @@ INT CMemoryAlloc::FreeOneList(ADDR nlist)
       FreeListGroup(info->localFreeStart, info->freeSize);
     }
     __DO_((nlist < MARK_MAX || nlist.UsedList == MARK_UNUSED),
-	    "FreeList Twice %p\n", nlist.pList);
+	  "FreeList Twice %p\n", nlist.pList);
 
     info->localFreeStart -= sizeof(ADDR);
     *(info->localFreeStart.pAddr) = nlist; 
@@ -145,40 +144,41 @@ INT CMemoryAlloc::FreeListGroup(ADDR &groupbegin, INT number)
 
 // process from CMemoryAlloc::UsedItem or threadMemoryInfo::usedListStart
 // it will not change the in para, and do NOT remove first node even countdowned.
-void CMemoryAlloc::CountTimeout(ADDR usedStart)
+INT CMemoryAlloc::CountTimeout(ADDR usedStart)
 {
   static volatile INT inCountDown = NOT_IN_PROCESS;
   INT   nowTimeout = GlobalTime - TIMEOUT_TCP;
   ADDR  thisAddr, nextAddr;
 
-  if (!CmpExg(&inCountDown, NOT_IN_PROCESS, IN_PROCESS)) return;
-  if (usedStart > MARK_MAX) {
-    thisAddr = usedStart;
-    nextAddr = thisAddr.UsedList;
-    if (thisAddr.CountDown <= TIMEOUT_QUIT) {                   // countdown first node but not free
-      if (thisAddr.CountDown) {
-	if (thisAddr.CountDown-- <= 0) {
-	  thisAddr = thisAddr;                                  // only for cheat compiler
-	  // DO close thisAddr.Handle
-	  // and thisAddr.Handle = 0;
-	} } }
-    else if (thisAddr.CountDown < nowTimeout) thisAddr.CountDown = TIMEOUT_QUIT;
-
-    while (nextAddr > MARK_MAX) {
-      if (nextAddr.CountDown <= TIMEOUT_QUIT) {
-	if (nextAddr.CountDown-- <= 0) {                        // maybe -1
-	  thisAddr.UsedList = nextAddr.UsedList;                // step one
-	  // DO close nextAddr.Handle
-	  // and nextAddr.Handle = 0;
-	  FreeOneList(nextAddr);
-	} }
-      else if (nextAddr.CountDown < nowTimeout) nextAddr.CountDown = TIMEOUT_QUIT;
-
-      if (thisAddr.UsedList == nextAddr) thisAddr = nextAddr;   // have do step one, no go next
+  __TRY
+    __DO (!CmpExg(&inCountDown, NOT_IN_PROCESS, IN_PROCESS));
+    if (usedStart > MARK_MAX) {
+      thisAddr = usedStart;
       nextAddr = thisAddr.UsedList;
-    } }
-  inCountDown = NOT_IN_PROCESS;
-  return;
+      if (thisAddr.CountDown <= TIMEOUT_QUIT) {                   // countdown first node but not free
+	if (thisAddr.CountDown) {
+	  if (thisAddr.CountDown-- <= 0) {
+	    thisAddr = thisAddr;                                  // only for cheat compiler
+	    // DO close thisAddr.Handle
+	    // and thisAddr.Handle = 0;
+	  } } }
+      else if (thisAddr.CountDown < nowTimeout) thisAddr.CountDown = TIMEOUT_QUIT;
+
+      while (nextAddr > MARK_MAX) {
+	if (nextAddr.CountDown <= TIMEOUT_QUIT) {
+	  if (nextAddr.CountDown-- <= 0) {                        // maybe -1
+	    thisAddr.UsedList = nextAddr.UsedList;                // step one
+	    // DO close nextAddr.Handle
+	    // and nextAddr.Handle = 0;
+	    __DO (FreeOneList(nextAddr));
+	  } }
+	else if (nextAddr.CountDown < nowTimeout) nextAddr.CountDown = TIMEOUT_QUIT;
+
+	if (thisAddr.UsedList == nextAddr) thisAddr = nextAddr;   // have do step one, no go next
+	nextAddr = thisAddr.UsedList;
+      } }
+    inCountDown = NOT_IN_PROCESS;
+  __CATCH
 }
 
 INT CMemoryAlloc::SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag)
@@ -245,7 +245,7 @@ INT CMemoryAlloc::DelMemoryBuffer(void)
 INT CMemoryAlloc::GetMemoryList(ADDR &nlist)
 {
   __TRY
-    __DO(GetOneList(nlist))
+    __DO (GetOneList(nlist))
     AddToUsed(nlist);
   __CATCH
 }
@@ -264,10 +264,39 @@ INT CMemoryAlloc::TimeoutAll(void)
     GlobalTime = time(NULL);
     threadMemoryInfo *list = threadListStart;
     while (list) {
-      CountTimeout(list->localUsedList);
+      __DO (CountTimeout(list->localUsedList));
       list = list->threadListNext;
     }
   __CATCH
+}
+
+void CMemoryAlloc::DisplayFree(void)
+{
+  INT   freenumber = 0, num = 0;;
+  threadMemoryInfo *list;
+  threadTraceInfo* info;
+  ADDR  addr;
+  INT   i = 0;
+
+  // mainEnd point to size+1, while localEnd point to size ??? surley ???
+  list = threadListStart;
+  while(list) {
+    addr.pVoid = list;
+    addr.aLong = (addr.aLong & NEG_SIZE_THREAD_STACK) + PAD_TRACE_INFO;
+    info = (threadTraceInfo*)addr.pVoid;
+    num = (list->localArrayEnd.aLong + sizeof(ADDR) - list->localFreeStart.aLong)/sizeof(ADDR);
+    if (info->className)
+      printf("%2lld:%20s:%3llx;    ", i++, info->className, num);
+    else 
+      printf("%2lld:%20s:%3llx;    ", i++, "unkonw thread", num);
+    freenumber += num;
+    list = list->threadListNext;
+    if (!(i % 3)) printf("\n");
+  }
+  if (i % 3) printf("\n");
+
+  num = (memoryArrayEnd.aLong - memoryArrayFree.aLong)/sizeof(ADDR);
+  printf("Main Free:%4lld, Total Free:%4lld\n", freenumber, freenumber + num);
 }
 
 #ifdef _TESTCOUNT

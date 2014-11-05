@@ -1,10 +1,6 @@
 #ifndef INCLUDE_RTHREAD_HPP
 #define INCLUDE_RTHREAD_HPP
 
-#include <sys/types.h>
-#include <signal.h>
-#include <execinfo.h>
-#include <ucontext.h>
 #include "rtype.hpp"
 
 class RThreadResource
@@ -85,14 +81,18 @@ public:
 
 #define displayTraceInfo(info)					\
   getTraceInfo(info);						\
-  for (int i=0; i<info->nowLevel/sizeof(perTraceInfo); i++)	\
+  if (info->className)						\
+    printf("In %p, thread %s\n", info, info->className);	\
+  else								\
+    printf("In %p\n", info);					\
+  for (int i=info->nowLevel/sizeof(perTraceInfo)-1; i>=0; i--)	\
     printf("  %d, in file:%14s, line:%4lld, func: %s\n",	\
 	   i,							\
 	   info->calledInfo[i].fileInfo,			\
 	   info->calledInfo[i].lineInfo,			\
 	   info->calledInfo[i].funcInfo);
 
-#define MAX_NEST_LOOP           255                             // size of func call nest
+#define MAX_NEST_LOOP           255                             // number of func call nest
 
 typedef struct perTraceInfo {
   char  *fileInfo;
@@ -104,7 +104,8 @@ typedef struct perTraceInfo {
 // MUST be multi of NORMAL_PAGE_SIZE
 typedef struct threadTraceInfo {
   INT   nowLevel;
-  INT   pad[3];
+  const char  *className;
+  INT   pad[2];
   perTraceInfo calledInfo[MAX_NEST_LOOP];
 }threadTraceInfo;
 
@@ -112,7 +113,13 @@ typedef struct threadTraceInfo {
   threadTraceInfo *_pt_debugtestinfo;		\
   displayTraceInfo(_pt_debugtestinfo);
 
-class RThread {
+
+// a lazy way, RThreadInit will run by the order clone. after all init finish, begin Doing
+#define RWAIT(mu, val)				\
+  while (mu != val) usleep(1000)
+
+__CLASS_(RThread)
+//class RThread {
 private:
   pid_t workId;
   ADDR  stackStart;
@@ -134,13 +141,13 @@ public:
   RThread();
   inline pid_t ReturnWorkId(void) { return workId; };
   INT RThreadClone(void);
-  inline static void RThreadCloneFinish(void) { LockDec(RThread::globalThreadNumber); };
+  inline static void RThreadCloneFinish(void)
+    { LockDec(RThread::globalThreadNumber); };
+  inline static void RThreadWaitInit(void)
+    { RWAIT(RThread::nowThreadNumber, RThread::globalThreadNumber - 1); };
+
   INT RThreadKill();
 };
-
-// a lazy way, RThreadInit will run by the order clone. after all init finish, begin Doing
-#define RWAIT(mu, val)				\
-  while (mu != val) usleep(1000)
 
 class CMemoryAlloc;
 
