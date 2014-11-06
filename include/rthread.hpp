@@ -82,15 +82,19 @@ public:
 #define displayTraceInfo(info)					\
   getTraceInfo(info);						\
   if (info->className)						\
-    printf("In %p, thread %s\n", info, info->className);	\
+    printf("In %p, threa: %s\n", info, info->className);	\
   else								\
-    printf("In %p\n", info);					\
+    printf("In %p, thread:Unkonwn\n", info);			\
   for (int i=info->nowLevel/sizeof(perTraceInfo)-1; i>=0; i--)	\
     printf("  %d, in file:%14s, line:%4lld, func: %s\n",	\
 	   i,							\
 	   info->calledInfo[i].fileInfo,			\
 	   info->calledInfo[i].lineInfo,			\
 	   info->calledInfo[i].funcInfo);
+
+#define setClassName()				\
+  getTraceInfo(threadInfo);			\
+  threadInfo->className = getClassName();
 
 #define MAX_NEST_LOOP           255                             // number of func call nest
 
@@ -110,16 +114,14 @@ typedef struct threadTraceInfo {
 }threadTraceInfo;
 
 #define __D					\
-  threadTraceInfo *_pt_debugtestinfo;		\
-  displayTraceInfo(_pt_debugtestinfo);
+  displayTraceInfo(threadInfo);
 
 
 // a lazy way, RThreadInit will run by the order clone. after all init finish, begin Doing
 #define RWAIT(mu, val)				\
   while (mu != val) usleep(1000)
 
-__CLASS_(RThread)
-//class RThread {
+__class(RThread)
 private:
   pid_t workId;
   ADDR  stackStart;
@@ -127,6 +129,7 @@ private:
 protected:
   BOOL  shouldQuit;
   INT   nowThread;
+  threadTraceInfo* threadInfo;	
 
 public:
   static volatile INT globalThreadNumber;

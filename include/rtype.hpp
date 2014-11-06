@@ -45,15 +45,6 @@ typedef union assignAddress
   assignAddress& operator = (assignAddress *&one) { this->pAddr = one; return *this; };
 }ADDR;
 
-#define UsedList                pList->usedList
-#define CountDown               pList->countDown
-#define ListFlag                pList->listFlag
-#define OtherBuffer             pList->otherBuffer
-
-#define BHandle                 pCont->bHandle
-#define ServerSocket            pCont->serverSocket
-#define ClientSocket            pCont->clientSocket
-
 #define ADDR_ADDR_COMPARE(op)				\
   BOOL inline operator op (ADDR &one, ADDR &two) {	\
   return (one.aLong op two.aLong); }

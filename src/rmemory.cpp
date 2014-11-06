@@ -43,6 +43,7 @@ CMemoryAlloc::CMemoryAlloc()
   GetCount = GetSuccessCount = FreeCount = FreeSuccessCount = 0;
 #endif // _TESTCOUNT
 
+  TimeoutInit = TIMEOUT_TCP;
   GlobalTime = time(NULL);
 }
 
@@ -147,7 +148,7 @@ INT CMemoryAlloc::FreeListGroup(ADDR &groupbegin, INT number)
 INT CMemoryAlloc::CountTimeout(ADDR usedStart)
 {
   static volatile INT inCountDown = NOT_IN_PROCESS;
-  INT   nowTimeout = GlobalTime - TIMEOUT_TCP;
+  INT   nowTimeout = GlobalTime - TimeoutInit;
   ADDR  thisAddr, nextAddr;
 
   __TRY
@@ -230,7 +231,7 @@ INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct, 
     if (buffer) {
       memorylist = RealBlock;
       for(i=0; i<TotalNumber; i++) {
-	memorylist.OtherBuffer = memorylist + buffer;
+	memorylist.LinkBuffer = memorylist + buffer;
 	memorylist += BorderSize; 
       }
     }
@@ -286,9 +287,9 @@ void CMemoryAlloc::DisplayFree(void)
     info = (threadTraceInfo*)addr.pVoid;
     num = (list->localArrayEnd.aLong + sizeof(ADDR) - list->localFreeStart.aLong)/sizeof(ADDR);
     if (info->className)
-      printf("%2lld:%20s:%3llx;    ", i++, info->className, num);
+      printf("Id:%2lld:%20s:%3llx;    ", i++, info->className, num);
     else 
-      printf("%2lld:%20s:%3llx;    ", i++, "unkonw thread", num);
+      printf("Id:%2lld:%20s:%3llx;    ", i++, "Unkonwn thread", num);
     freenumber += num;
     list = list->threadListNext;
     if (!(i % 3)) printf("\n");
@@ -296,7 +297,12 @@ void CMemoryAlloc::DisplayFree(void)
   if (i % 3) printf("\n");
 
   num = (memoryArrayEnd.aLong - memoryArrayFree.aLong)/sizeof(ADDR);
-  printf("Main Free:%4lld, Total Free:%4lld\n", freenumber, freenumber + num);
+  printf("Main Free:%4lld, Total Free:%4lld\n", num, freenumber + num);
+
+#ifdef _TESTCOUNT
+  printf("Get  :%10lld, Succ:%10lld\n", GetCount, GetSuccessCount);
+  printf("Free :%10lld, Succ:%10lld\n", FreeCount, FreeSuccessCount);
+#endif // _TESTCOUNT
 }
 
 #ifdef _TESTCOUNT

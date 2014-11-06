@@ -28,10 +28,15 @@
 #define SEG_START_BUFFER        (0x52LL << 40)                  // 'R'
 #define SEG_START_STACK         (0x53LL << 40)                  // 'S'
 
+#define CHAR_SMALL              32
+#define CHAR_NORMAL             512
+#define CHAR_LARGE              4096
+
 #define SIZE_CACHE              64                              // for struct border
 #define SIZE_NORMAL_PAGE        (0x01LL << 12)                  // 4K
 #define SIZE_HUGE_PAGE          (0x01LL << 21)                  // 2M
 #define SIZE_THREAD_STACK       (0x01LL << 24)                  // 16M
+#define SIZE_DATA_BUFFER        (0x01LL << 22)                  // 4M
 
 #define NEG_SIZE_THREAD_STACK   (-1*SIZE_THREAD_STACK)
 #define SIZE_SMALL_PAD          8
@@ -42,6 +47,10 @@
 
 #define MAP_FAIL                -1                              // lazy replace MAP_FAILED
 #define NUL                     0                               // lazy replace NULL
+
+#define TIMEOUT_TCP             20
+#define TIMEOUT_INFINITE        0xffffffff
+#define TIMEOUT_QUIT            2
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // pad size for border, stack must at 2^n border                                                   //
@@ -72,7 +81,8 @@
 #define __BETWEEN(x,y)          if (ret_err >= __TO_MARK(x) && ret_err <= __TO_MARK(y))
 #define __AFTER(x)              if (ret_err >= __TO_MARK(x))
 #define __CATCH_END             endCall(); return ret_err;
-#define	__CATCH                 endCall(); return 0; error_stop: endCall(); return ret_err;
+#define	__CATCH                 endCall(); return 0; error_stop: \
+  endCall(); return ret_err;
 #define __BREAK                 { goto error_stop; }
 #define __BREAK_OK              { ret_err = 0; goto error_stop; }
 
@@ -147,12 +157,16 @@ void    __MESSAGE(INT level, const char * _Format, ...);
 #define __LOCK(lock)            while(!CmpExg(&lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREE(lock)            lock = NOT_IN_PROCESS;
 
-#define __CLASS_(name)          class name { public: const char *__CLASS__ = #name; private:
-#define __CLASS(name, base)     class name : public base {  public: const char *__CLASS__ = #name;
-#define setClassName()				\
-  threadTraceInfo* info;			\
-  getTraceInfo(info);				\
-  info->className = __CLASS__;
+#define __class(name)           class name {					\
+                                  protected:			     		\
+				    virtual const char* getClassName(void) {    \
+				     return #name; };				\
+                                  private:
 
+#define __class_(name, base)    class name : public base {			\
+                                  protected:			     		\
+				    virtual const char* getClassName(void) {    \
+				     return #name; };				\
+                                  private:
 
 #endif  // INCLUDE_RAYMONCOMMON_H

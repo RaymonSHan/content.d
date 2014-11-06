@@ -13,6 +13,7 @@
 INT RpollThread::RThreadInit(void)
 {
   __TRY
+    setClassName();
     pApp = ::GetApplication();
     contentMemory = pApp->ReturnContent();
     bufferMemory = pApp->ReturnBuffer();
@@ -67,8 +68,6 @@ INT RpollAcceptThread::BeginListen(int query)
 
 INT RpollAcceptThread::RpollThreadInit(void)
 {
-  setClassName();
-
   __TRY
     __DO (CreateListen(pApp->ServerListen));
   __CATCH
@@ -99,7 +98,6 @@ INT RpollAcceptThread::RThreadDoing(void)
 
 INT RpollReadThread::RpollThreadInit(void)
 {
-  setClassName();
   __TRY
     __DO(CreateRpollHandle());
   __CATCH

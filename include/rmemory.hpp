@@ -17,10 +17,6 @@
 #define MARK_USED               0x10
 #define MARK_MAX	        0x100
 
-#define TIMEOUT_TCP             20
-#define TIMEOUT_INFINITE        0xffffffff
-#define TIMEOUT_QUIT            2
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // memory alloc base class                                                                         //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
@@ -35,7 +31,7 @@ public:
   // In NonDirectly free, free the item when equal TIMEOUT_QUIT
   INT   countDown;
   // point to large buffer
-  ADDR  otherBuffer;
+  ADDR  linkBuffer;
   // the behavior the item, for these const start with FLAG_
   INT   listFlag;
 };
@@ -137,22 +133,46 @@ public:
   int   bHandle;
   SOCKADDR serverSocket;
   SOCKADDR clientSocket;
-  CContentItem *pNextPeer;
-  CContentItem *pPrevPeer;
+  CContentItem *nextPeer;
+  CContentItem *prevPeer;
   CContentItem *moreContent;
   CBufferItem  *moreBuffer;
   CBufferItem  *otherBuffer;
   CMemoryAlloc *contentType;
-  // CApplication * pApplication
+  //  CApplication * pApplication
 };
  
 class CBufferItem : public CListItem
 {
 public:
-  INT   nProcessSize;
-  INT   nOperation;
+  INT   nSize;
+  INT   nOper;
   CMemoryAlloc *bufferType;
-  char  pad [1024*128];
+  ADDR  realStart;
+  char  bufferName[CHAR_SMALL];
+  char  ahead[SIZE_NORMAL_PAGE - CHAR_SMALL - 4*8];             // make following page border
+  char  bufferData[SIZE_DATA_BUFFER - SIZE_NORMAL_PAGE];        // total size SIZE_DATA_BUFFER
 };
 
+#define UsedList                pList->usedList
+#define CountDown               pList->countDown
+#define ListFlag                pList->listFlag
+#define LinkBuffer              pList->linkBuffer
+
+#define BHandle                 pCont->bHandle
+#define ServerSocket            pCont->serverSocket
+#define ClientSocket            pCont->clientSocket
+#define NextPeer                pCont->nextPeer
+#define PrevPeer                pCont->prevPeer
+#define MoreContent             pCont->moreContent
+#define MoreBuffer              pCont->moreBuffer
+#define OtherBuffer             pCont->otherBuffer
+#define ContentType             pCont->ContentTypess
+
+#define NSize                   pBuff->nSize
+#define NOper                   pBuff->nOper
+#define BufferType              pBuff->bufferType
+#define RealStart               pBuff->realStart
+#define BufferName              pBuff->bufferName
+#define BufferData              pBuff->bufferData
 #endif

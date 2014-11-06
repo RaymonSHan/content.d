@@ -21,8 +21,9 @@
 
 class   RpollGlobalApp;
 
-__CLASS(RpollThread, RThread)
+__class_(RpollThread, RThread)
 //class RpollThread : public RThread {
+
 public:
   CMemoryAlloc *contentMemory;
   CMemoryAlloc *bufferMemory;
@@ -47,8 +48,7 @@ public:
   INT CreateRpollHandle(void);
 };
 
-__CLASS(RpollAcceptThread, RpollThread)
-//class RpollAcceptThread : public RpollThread {
+__class_(RpollAcceptThread, RpollThread)
 private:
   ADDR  listenAddr;
   virtual INT RpollThreadInit(void);
@@ -58,25 +58,25 @@ public:
   INT BeginListen(int query);
 };
 
-class RpollScheduleThread : public RpollThread {
+__class_(RpollScheduleThread, RpollThread)
 private:
   virtual INT RpollThreadInit(void);
   virtual INT RThreadDoing(void);
 };
 
-class RpollWorkThread : public RpollThread {
+__class_(RpollWorkThread, RpollThread)
 private:
   virtual INT RpollThreadInit(void);
   virtual INT RThreadDoing(void);
 };
 
-class RpollReadThread : public RpollThread {
+__class_(RpollReadThread, RpollThread)
 private:
   virtual INT RpollThreadInit(void);
   virtual INT RThreadDoing(void);
 };
 
-class RpollWriteThread : public RpollThread {
+__class_(RpollWriteThread, RpollThread)
 private:
   virtual INT RpollThreadInit(void);
   virtual INT RThreadDoing(void);
