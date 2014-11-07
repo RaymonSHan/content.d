@@ -1,4 +1,4 @@
-
+// epollpool.cpp
 
 #include "../include/raymoncommon.h"
 #include "../include/rmemory.hpp"
@@ -121,7 +121,6 @@ INT RpollReadThread::RThreadDoing(void)
 
 INT RpollWriteThread::RpollThreadInit(void)
 {
-  setClassName();
   __TRY
   __CATCH
 }
@@ -130,30 +129,32 @@ INT RpollWriteThread::RThreadDoing(void)
 {
   __TRY
     sleep(1);
+
   __CATCH
 }
 
 INT RpollWorkThread::RpollThreadInit(void)
 {
-  setClassName();
   __TRY
   __CATCH
 }
 
 INT RpollWorkThread::RThreadDoing(void)
 {
+  ADDR buff;
+
   __TRY
-    sleep(1);
+    __DO_(eventFd->EventRead(buff), "error 0");
+  //    printf("in work, %p, %lld\n", &buff, buff.aLong);
   __CATCH
 }
 
 INT RpollScheduleThread::RpollThreadInit(void)
 {
-  setClassName();
   int i;
   __TRY
     for (i=0; i<MAX_WORK_THREAD; i++)
-      pApp->ScheduleWorkThread[i] = &(pApp->WorkThreadGroup[i]);
+      pApp->ScheduleWork[i] = &(pApp->RpollWorkGroup[i]);
     for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
       pApp->ScheduleAccept[i] = &(pApp->RpollAcceptGroup[i]);
     for (i=0; i<MAX_RPOLL_READ_THREAD; i++)
@@ -166,14 +167,8 @@ INT RpollScheduleThread::RpollThreadInit(void)
 INT RpollScheduleThread::RThreadDoing(void)
 {
   __TRY
-
     contentMemory->DisplayFree();
-
-
-
-
     sleep(2);
-
   __CATCH
 }
 
@@ -202,10 +197,14 @@ INT RpollGlobalApp::StartRpoll(int flag, struct sockaddr serverlisten)
         __DO(RpollReadGroup[i].RThreadClone());
       for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++) 
         __DO(RpollWriteGroup[i].RThreadClone());
-      __DO(RScheduleGroup.RThreadClone());
+
+      for (i=0; i<MAX_WORK_THREAD; i++) 
+        __DO(RpollWorkGroup[i].RThreadClone());
+
+      if (MAX_SCHEDULE_THREAD) __DO(RScheduleGroup.RThreadClone());
 
       RThread::RThreadWaitInit();
-      __DO(RpollAcceptGroup[0].BeginListen(10));
+      if (MAX_RPOLL_ACCEPT_THREAD) __DO(RpollAcceptGroup[0].BeginListen(10));
       RThread::RThreadCloneFinish();
     }
     printf("OK\n");
@@ -226,7 +225,10 @@ INT RpollGlobalApp::KillAllChild(void)
     for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++)
       kill(RpollWriteGroup[i].ReturnWorkId(), SIGTERM);
     for (i=0; i<MAX_WORK_THREAD; i++)
-      kill(WorkThreadGroup[i].ReturnWorkId(), SIGTERM);
+      kill(RpollWorkGroup[i].ReturnWorkId(), SIGTERM);
+
+    kill(RScheduleGroup.ReturnWorkId(), SIGTERM);
+
   __CATCH
 }
 

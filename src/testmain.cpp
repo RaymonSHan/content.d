@@ -7,6 +7,11 @@
 
 RpollGlobalApp RpollApp;
 
+RpollGlobalApp* GetApplication()
+{
+  return &RpollApp;
+}
+
 void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret)
 {
   ADDR  stack, erroraddr;
@@ -25,7 +30,7 @@ void SIGSEGV_Handle(int sig, siginfo_t *info, void *secret)
   } else {
     printf("Got signal %d, faulty address is %p, from %llx\n Calling: \n",
 	   sig, info->si_addr, uc->uc_mcontext.gregs[REG_RIP]);
-    displayTraceInfo(tinfo);
+    if (sig != SIGTERM) displayTraceInfo(tinfo);
     RpollApp.KillAllChild();
     exit(-1);
   }
@@ -43,23 +48,21 @@ void SetupSIG(int num, SigHandle func)
 
 #ifdef  TEST_THREAD
 
-
-RpollGlobalApp* GetApplication()
-{
-  return &RpollApp;
-}
-
-
-
 int main (int, char**)
 {
   union SOCKADDR addr;
   char local_addr[] = "127.0.0.1";  
   int retthread, status;
- 
-  SetupSIG(SIGSEGV, SIGSEGV_Handle);
-  SetupSIG(SIGILL, SIGSEGV_Handle);
-  SetupSIG(SIGTERM, SIGSEGV_Handle);
+
+  SetupSIG(SIGSEGV, SIGSEGV_Handle);                            // sign 11
+  SetupSIG(SIGILL, SIGSEGV_Handle);                             // sign 4
+  SetupSIG(SIGTERM, SIGSEGV_Handle);                            // sign 15
+
+  REvent ev;
+  ADDR evad = {0};
+  INT sta;
+  INT failco = 0;
+  ev.EventInit();
 
   __TRY
     RpollApp.InitRpollGlobalApp();                              // setup memory
@@ -69,7 +72,18 @@ int main (int, char**)
     inet_aton(local_addr,&(addr.saddrin.sin_addr));
     addr.saddrin.sin_port=htons(8998);
 
+    for (int i=0; i<MAX_WORK_THREAD; i++)
+      RpollApp.RpollWorkGroup[i].SetWaitfd(&ev);
+
     RpollApp.StartRpoll(RUN_WITH_CONSOLE, addr.saddr);
+
+  for (int i=0; i<1000; i++) {
+sta =  ev.EventWrite(evad);
+ usleep(1);
+ if (sta) failco ++;
+    evad.aLong ++;
+  }
+  printf("fail %lld\n", failco);
 
     retthread = waitpid(-1, &status, __WCLONE);
     RpollApp.KillAllChild();
@@ -134,6 +148,9 @@ int main(int, char**)
 }
 
 /*
+for continous read and write eventfd, it take 3.6s for 10M times
+one loop for 360ns
+
 60M times 9.2 2thread1cpu lockfree, 11.2 2thread2cpu lockfree, 3.4*2 1thread lockfree
 60M times 5.9 2thread2cpu semi, 1.0*2 1thread semi
 60M times 6.3 2thread2cpu semi add head, 1.1*2 1thread semiadd head
@@ -149,3 +166,32 @@ the size in table means max number, it will free only reach max.
 the fast is all local, only 14ns for one GET/FREE. 
  */
 #endif // TEST_RMEMORY
+
+/*
+Main Free:  96, Total Free:  99
+Id: 0: RpollScheduleThread:  0;    Id: 1:     RpollWorkThread:  0;    Id: 2:     RpollWorkThread:  0;    
+Id: 3:    RpollWriteThread:  0;    Id: 4:     RpollReadThread:  0;    Id: 5:   RpollAcceptThread:  3;    
+Main Free:  96, Total Free:  99
+Id: 0: RpollScheduleThread:  0;    Id: 1:     RpollWorkThread:  0;    Id: 2:     RpollWorkThread:  0;      C-c C-c
+raymon@ubuntu:~/content.d/src$ ./epolltest
+OK
+Id: 0: RpollScheduleThread:  0;    Id: 1:     RpollWorkThread:  0;    Id: 2:     RpollWorkThread:  0;    
+Id: 3:    RpollWriteThread:  0;    Id: 4:     RpollReadThread:  0;    Id: 5:   RpollAcceptThread:  3;    
+Main Free:  96, Total Free:  99
+Got signal 4, faulty address is 0x7f553d7fcba9, from 7f553d7fcba9
+ Calling: 
+In 0x530027001000, threa: RpollAcceptThread
+  1, in file: epollpool.cpp, line:  86, func: virtual long long int RpollAcceptThread::RThreadDoing()
+  0, in file:   rthread.cpp, line:  91, func: static int RThread::RThreadFunc(void*)
+Got signal 15, faulty address is 0x3e8000024aa, from 7f553cf3cea7
+ Calling: 
+In 0x530027001000, threa: RpollAcceptThread
+  2, in file: epollpool.cpp, line: 220, func: long long int RpollGlobalApp::KillAllChild()
+  1, in file: epollpool.cpp, line:  86, func: virtual long long int RpollAcceptThread::RThreadDoing()
+  0, in file:   rthread.cpp, line:  91, func: static int RThread::RThreadFunc(void*)
+fail 0
+raymon@ubuntu:~/content.d/src$ Id: 0: RpollScheduleThread:  0;    Id: 1:     RpollWorkThread:  0;    Id: 2:     RpollWorkThread:  0;    
+Id: 3:    RpollWriteThread:  0;    Id: 4:     RpollReadThread:  0;    Id: 5:   RpollAcceptThread:  3;    
+Main Free:  96, Total Free:  99
+Id: 0: RpollScheduleThread:  0;    Id: 1:     RpollWorkThread:  0;    Id: 2:     RpollWorkThread:  0;    
+*/

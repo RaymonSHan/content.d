@@ -9,7 +9,7 @@ void SetupSIG(int num, SigHandle func);
 int main(int, char**);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
-// This is thread test main program from. From                                                     //
+// This is thread test main program. From Oct. 30 -                                                //
 // request : raymoncommon.cpp rthread.cpp                                                          //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 #define TEST_THREAD
@@ -19,7 +19,7 @@ RpollGlobalApp* GetApplication();
 #endif  // TEST_THREAD
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
-// This is rmemory test main program from. From Oct. 22 - 29 2014.                                 //
+// This is rmemory test main program. From Oct. 22 - 29 2014.                                      //
 // total program time about 50 hour, base on memoryiocp                                            //
 // request : raymoncommon.cpp rmemory.cpp                                                          //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //

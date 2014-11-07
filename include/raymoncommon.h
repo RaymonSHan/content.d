@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <sys/socket.h> 
 #include <sys/types.h>
@@ -81,8 +82,7 @@
 #define __BETWEEN(x,y)          if (ret_err >= __TO_MARK(x) && ret_err <= __TO_MARK(y))
 #define __AFTER(x)              if (ret_err >= __TO_MARK(x))
 #define __CATCH_END             endCall(); return ret_err;
-#define	__CATCH                 endCall(); return 0; error_stop: \
-  endCall(); return ret_err;
+#define	__CATCH                 endCall(); return 0; error_stop: endCall(); return ret_err;
 #define __BREAK                 { goto error_stop; }
 #define __BREAK_OK              { ret_err = 0; goto error_stop; }
 
@@ -95,7 +95,7 @@ void    __MESSAGE(INT level, const char * _Format, ...);
 #define __INFO(level, _Format,...)					\
   { __MESSAGE(level,  _Format,##__VA_ARGS__); }
 #define __INFOb(level, _Format,...)					\
-  { __MESSAGE(level, _Format,##__VA_ARGS__); \
+  { __MESSAGE(level, _Format,##__VA_ARGS__);				\
     ret_err = 0; goto error_stop;}
 
 #define __DO1c_(val, func, _Format,...) {				\
@@ -121,7 +121,7 @@ void    __MESSAGE(INT level, const char * _Format, ...);
       __BREAK								\
     }									\
   }
-#define __DO1(func)             __DO1_(func, NULL)
+#define __DO1(val, func)             __DO1_(val, func, NULL)
 
 #define __DO_(func, _Format,...) {					\
     setLine();								\
@@ -157,6 +157,9 @@ void    __MESSAGE(INT level, const char * _Format, ...);
 #define __LOCK(lock)            while(!CmpExg(&lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREE(lock)            lock = NOT_IN_PROCESS;
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+// get __CLASS__ for thread                                                                        //
+////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 #define __class(name)           class name {					\
                                   protected:			     		\
 				    virtual const char* getClassName(void) {    \

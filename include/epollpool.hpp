@@ -7,10 +7,11 @@
 #include "rmemory.hpp"
 #include "rthread.hpp"
 
-#define MAX_RPOLL_ACCEPT_THREAD         1
-#define MAX_RPOLL_READ_THREAD           1
-#define MAX_RPOLL_WRITE_THREAD          1
-#define MAX_WORK_THREAD                 1
+#define MAX_RPOLL_ACCEPT_THREAD         0
+#define MAX_RPOLL_READ_THREAD           0
+#define MAX_RPOLL_WRITE_THREAD          0
+#define MAX_WORK_THREAD                 2
+#define MAX_SCHEDULE_THREAD             0
 
 #define MAX_LISTEN_QUERY                128
 
@@ -22,8 +23,6 @@
 class   RpollGlobalApp;
 
 __class_(RpollThread, RThread)
-//class RpollThread : public RThread {
-
 public:
   CMemoryAlloc *contentMemory;
   CMemoryAlloc *bufferMemory;
@@ -66,8 +65,11 @@ private:
 
 __class_(RpollWorkThread, RpollThread)
 private:
+  REvent *eventFd;
   virtual INT RpollThreadInit(void);
   virtual INT RThreadDoing(void);
+public:
+  void  SetWaitfd(REvent* fd) { eventFd = fd; };
 };
 
 __class_(RpollReadThread, RpollThread)
@@ -92,7 +94,7 @@ private:
 
 public:
   class RpollScheduleThread RScheduleGroup;
-  class RpollWorkThread WorkThreadGroup[MAX_WORK_THREAD];
+  class RpollWorkThread RpollWorkGroup[MAX_WORK_THREAD];
   class RpollAcceptThread RpollAcceptGroup[MAX_RPOLL_ACCEPT_THREAD];
   class RpollReadThread RpollReadGroup[MAX_RPOLL_READ_THREAD];
   class RpollWriteThread RpollWriteGroup[MAX_RPOLL_WRITE_THREAD];
@@ -104,7 +106,7 @@ public:
   int workSche;
 
 public:
-  class RpollWorkThread *ScheduleWorkThread[MAX_WORK_THREAD];
+  class RpollWorkThread *ScheduleWork[MAX_WORK_THREAD];
   class RpollAcceptThread *ScheduleAccept[MAX_RPOLL_ACCEPT_THREAD];
   class RpollReadThread *ScheduleRead[MAX_RPOLL_READ_THREAD];
   class RpollWriteThread *ScheduleWrite[MAX_RPOLL_WRITE_THREAD];

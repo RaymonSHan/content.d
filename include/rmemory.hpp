@@ -127,6 +127,9 @@ public:                         // statistics info for debug
 #define NUMBER_CONTENT  100
 #define NUMBER_BUFFER   150
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+// main struct                                                                                     //
+////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 class CContentItem : public CListItem
 {
 public:
@@ -139,7 +142,7 @@ public:
   CBufferItem  *moreBuffer;
   CBufferItem  *otherBuffer;
   CMemoryAlloc *contentType;
-  //  CApplication * pApplication
+  RThread *workThread;;
 };
  
 class CBufferItem : public CListItem
@@ -168,6 +171,7 @@ public:
 #define MoreBuffer              pCont->moreBuffer
 #define OtherBuffer             pCont->otherBuffer
 #define ContentType             pCont->ContentTypess
+#define WorkThread              pCont->workThread
 
 #define NSize                   pBuff->nSize
 #define NOper                   pBuff->nOper

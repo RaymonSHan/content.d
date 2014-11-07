@@ -18,6 +18,39 @@ INT RThreadResource::SetResourceOffset(INT size)
   return nowOffset;
 }
 
+INT REvent::EventInit()
+{
+  __TRY
+    handleLock = NOT_IN_PROCESS;
+    __DO1_(eventFd,
+	   eventfd(0, EFD_SEMAPHORE),
+	   "Error in create eventfd");
+  __CATCH
+}
+const ADDR CONSTADDR = {1};
+INT REvent::EventWrite(ADDR addr)
+{
+  int status;
+  __TRY
+    __DO  (!CmpExg(&handleLock.aLong, NOT_IN_PROCESS, addr.aLong))
+    __DO1_(status,
+	   write(eventFd, &CONSTADDR, sizeof(ADDR)),
+	   "Error in write eventfd function");
+  __CATCH
+}
+
+INT REvent::EventRead(ADDR &addr)
+{
+  int status;
+  __TRY
+    __DO1_(status,
+	   read(eventFd, &addr, sizeof(ADDR)),
+	   "Error in read eventfd function");
+    addr = handleLock;
+    handleLock = NOT_IN_PROCESS;
+  __CATCH
+}
+
 volatile INT RThread::globalThreadNumber = 1;
 volatile INT RThread::nowThreadNumber = 0;
 

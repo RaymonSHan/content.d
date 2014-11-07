@@ -14,6 +14,17 @@ public:
   INT SetResourceOffset(INT size);
 };
 
+class REvent
+{
+private:
+  ADDR  handleLock;
+  int   eventFd;
+public:
+  INT EventInit();
+  INT EventWrite(ADDR addr);
+  INT EventRead(ADDR &addr);
+};
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // per thread info, saved at the bottom of stack                                                   //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
@@ -115,7 +126,6 @@ typedef struct threadTraceInfo {
 
 #define __D					\
   displayTraceInfo(threadInfo);
-
 
 // a lazy way, RThreadInit will run by the order clone. after all init finish, begin Doing
 #define RWAIT(mu, val)				\
