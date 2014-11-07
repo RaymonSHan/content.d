@@ -58,13 +58,13 @@ int main (int, char**)
   SetupSIG(SIGILL, SIGSEGV_Handle);                             // sign 4
   SetupSIG(SIGTERM, SIGSEGV_Handle);                            // sign 15
 
-  REvent ev;
+  RMultiEvent ev;
   ADDR evad = {0};
   INT sta;
   INT failco = 0;
-  ev.EventInit();
 
   __TRY
+    __DO_(ev.EventInit(30), "error in event init");
     RpollApp.InitRpollGlobalApp();                              // setup memory
 
     bzero(&addr.saddrin, sizeof(sockaddr_in));   
@@ -79,7 +79,7 @@ int main (int, char**)
 
   for (int i=0; i<1000; i++) {
 sta =  ev.EventWrite(evad);
- usleep(1);
+ if ((i%30) == 0) usleep(1);
  if (sta) failco ++;
     evad.aLong ++;
   }

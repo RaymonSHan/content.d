@@ -10,7 +10,7 @@
 #define MAX_RPOLL_ACCEPT_THREAD         0
 #define MAX_RPOLL_READ_THREAD           0
 #define MAX_RPOLL_WRITE_THREAD          0
-#define MAX_WORK_THREAD                 2
+#define MAX_WORK_THREAD                 4
 #define MAX_SCHEDULE_THREAD             0
 
 #define MAX_LISTEN_QUERY                128
@@ -65,11 +65,11 @@ private:
 
 __class_(RpollWorkThread, RpollThread)
 private:
-  REvent *eventFd;
+  RMultiEvent *eventFd;
   virtual INT RpollThreadInit(void);
   virtual INT RThreadDoing(void);
 public:
-  void  SetWaitfd(REvent* fd) { eventFd = fd; };
+  void  SetWaitfd(RMultiEvent* fd) { eventFd = fd; };
 };
 
 __class_(RpollReadThread, RpollThread)

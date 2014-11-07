@@ -44,7 +44,7 @@
 
 #define INT			long long int                   // basic type
 #define BOOL                    bool
-#define HANDLE_LOCK             long long int			//
+#define HANDLE_LOCK             volatile long long int		//
 
 #define MAP_FAIL                -1                              // lazy replace MAP_FAILED
 #define NUL                     0                               // lazy replace NULL

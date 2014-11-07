@@ -81,8 +81,8 @@ private:                        // for thread info
   ADDR  memoryArrayEnd;         // array end
 
 private:                        // lock
-  volatile HANDLE_LOCK          InProcess;
-  volatile HANDLE_LOCK          *pInProcess;
+  HANDLE_LOCK          InProcess;
+  HANDLE_LOCK          *pInProcess;
 
 private:                        // info should setup when init
   INT   DirectFree;

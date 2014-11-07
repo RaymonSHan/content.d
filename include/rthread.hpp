@@ -25,6 +25,22 @@ public:
   INT EventRead(ADDR &addr);
 };
 
+#define MAX_HANDLE_LOCK         31
+
+class RMultiEvent
+{
+private:
+  ADDR  handleBuffer[MAX_HANDLE_LOCK + 1];
+  INT   handleNumber;
+  INT   handleStart;
+  INT   handleEnd;
+  HANDLE_LOCK handleLock;
+  int   eventFd;
+public:
+  INT EventInit(INT num);
+  INT EventWrite(ADDR addr);
+  INT EventRead(ADDR &addr);
+};
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // per thread info, saved at the bottom of stack                                                   //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //

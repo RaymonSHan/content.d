@@ -144,7 +144,7 @@ INT RpollWorkThread::RThreadDoing(void)
   ADDR buff;
 
   __TRY
-    __DO_(eventFd->EventRead(buff), "error 0");
+    __DO_(eventFd->EventRead(buff), "error reading");
   //    printf("in work, %p, %lld\n", &buff, buff.aLong);
   __CATCH
 }

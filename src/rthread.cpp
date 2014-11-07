@@ -18,6 +18,8 @@ INT RThreadResource::SetResourceOffset(INT size)
   return nowOffset;
 }
 
+const static ADDR CONSTADDR = {1};
+
 INT REvent::EventInit()
 {
   __TRY
@@ -27,7 +29,7 @@ INT REvent::EventInit()
 	   "Error in create eventfd");
   __CATCH
 }
-const ADDR CONSTADDR = {1};
+
 INT REvent::EventWrite(ADDR addr)
 {
   int status;
@@ -43,11 +45,50 @@ INT REvent::EventRead(ADDR &addr)
 {
   int status;
   __TRY
-    __DO1_(status,
-	   read(eventFd, &addr, sizeof(ADDR)),
-	   "Error in read eventfd function");
+    __DO1(status,
+	  read(eventFd, &addr, sizeof(ADDR)));
     addr = handleLock;
     handleLock = NOT_IN_PROCESS;
+  __CATCH
+}
+
+INT RMultiEvent::EventInit(INT num)
+{
+  __TRY
+    __DO(num > MAX_HANDLE_LOCK)
+    handleLock = NOT_IN_PROCESS;
+    handleStart = 0;
+    handleEnd = num;        // there means empty
+    handleNumber = num + 1;
+    __DO1(eventFd,
+	  eventfd(0, EFD_SEMAPHORE));
+  __CATCH
+}
+
+INT RMultiEvent::EventWrite(ADDR addr)
+{
+  int status;
+  __TRY
+    __DO (handleStart == handleEnd);
+    __LOCK(handleLock);
+    handleBuffer[handleStart] = addr;
+    if (++handleStart == handleNumber) handleStart = 0;
+    __FREE(handleLock);
+    __DO1(status,
+	  write(eventFd, &CONSTADDR, sizeof(ADDR)));
+  __CATCH
+}
+
+INT RMultiEvent::EventRead(ADDR &addr)
+{
+  int status;
+  __TRY
+    __DO1(status,
+	  read(eventFd, &addr, sizeof(ADDR)));
+    __LOCK(handleLock);
+    if (++handleEnd == handleNumber) handleEnd = 0;
+    addr = handleBuffer[handleEnd];
+    __FREE(handleLock);
   __CATCH
 }
 
