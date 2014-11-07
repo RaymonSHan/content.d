@@ -3,12 +3,16 @@
 #include "../include/raymoncommon.h"
 #include "../include/rmemory.hpp"
 #include "../include/epollpool.hpp"
-
 #include "../include/testmain.hpp"
 
 #define GETSIZE                 4
 #define FREESIZE                4
 #define MAXSIZE                 8
+
+RpollThread::RpollThread()
+{
+  firstEvent = 0;
+}
 
 INT RpollThread::RThreadInit(void)
 {
@@ -31,6 +35,40 @@ INT RpollThread::CreateRpollHandle(void)
     __DO1_(epollHandle, epoll_create(1), "Error in create epoll");
   __CATCH
 }
+
+INT RpollThread::AttachEvent(RMultiEvent *event)
+{
+  RMultiEvent *thisevent, *nextevent;
+  __TRY
+    if (firstEvent) {
+      thisevent = firstEvent;
+      do {
+	nextevent = thisevent->GetNextEvent();
+      } while (nextevent);
+      thisevent->SetNextEvent(event);
+    }
+    else firstEvent = event;
+  __CATCH
+}
+
+INT RpollThread::SendToNextThread(ADDR item)
+{
+  RMultiEvent * thisevent;
+  INT isok;
+
+  __TRY
+    thisevent = firstEvent;
+    while (thisevent) {
+      isok = thisevent->isThisFunc(item);
+      if (isok) {
+	thisevent->EventWrite(item);
+	break;
+      }
+      thisevent = thisevent->GetNextEvent();
+    }
+  __CATCH
+}
+
 
 INT RpollAcceptThread::CreateListen(struct sockaddr &serveraddr)
 {
@@ -108,6 +146,7 @@ INT RpollReadThread::RThreadDoing(void)
   int evNumber, i;
   char line[1000];
   int readed;
+  ADDR tryaddr = {0};
   __TRY
     __DO1_(evNumber, 
 	   epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, 1000*100), 
@@ -116,6 +155,7 @@ INT RpollReadThread::RThreadDoing(void)
       readed = read(waitEv->data.fd, line, 1000);
       printf("read %d\n", readed);
     }
+    SendToNextThread(tryaddr);
   __CATCH
 }
 
@@ -129,11 +169,38 @@ INT RpollWriteThread::RThreadDoing(void)
 {
   __TRY
     sleep(1);
-
   __CATCH
 }
 
-INT RpollWorkThread::RpollThreadInit(void)
+RpollWorkThread::RpollWorkThread(void)
+{
+  eventFd = 0;
+  firstApplication = 0;
+}
+
+INT RpollWorkThread::AttachApplication(CApplication *app)
+{
+  CApplication *thisapp, *nextapp;
+  __TRY
+    if (firstApplication) {
+      thisapp = firstApplication;
+      do {
+	nextapp = thisapp->GetNextApplication();
+      } while (nextapp);
+      thisapp->SetNextApplication(app);
+    }
+    else firstApplication = app;
+  __CATCH
+}
+
+INT RpollWorkThread::RpollWorkThreadInit(void)                  // called in main, before clone
+{
+  __TRY
+    // should do SetWaitfd, AttachApplication
+  __CATCH
+}
+
+INT RpollWorkThread::RpollThreadInit(void)                      // called after clone
 {
   __TRY
   __CATCH
@@ -142,9 +209,17 @@ INT RpollWorkThread::RpollThreadInit(void)
 INT RpollWorkThread::RThreadDoing(void)
 {
   ADDR buff;
+  CApplication *thisapp;
 
   __TRY
     __DO_(eventFd->EventRead(buff), "error reading");
+    thisapp = firstApplication;
+    while (thisapp) {
+      thisapp->DoApplication(buff);
+      thisapp = thisapp->GetNextApplication();
+    }
+    SendToNextThread(buff);
+
   //    printf("in work, %p, %lld\n", &buff, buff.aLong);
   __CATCH
 }

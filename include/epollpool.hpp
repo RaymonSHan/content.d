@@ -5,13 +5,14 @@
 #include <sys/types.h>
 
 #include "rmemory.hpp"
+#include "application.hpp"
 #include "rthread.hpp"
 
-#define MAX_RPOLL_ACCEPT_THREAD         0
-#define MAX_RPOLL_READ_THREAD           0
-#define MAX_RPOLL_WRITE_THREAD          0
-#define MAX_WORK_THREAD                 4
-#define MAX_SCHEDULE_THREAD             0
+#define MAX_RPOLL_ACCEPT_THREAD         1
+#define MAX_RPOLL_READ_THREAD           1
+#define MAX_RPOLL_WRITE_THREAD          1
+#define MAX_WORK_THREAD                 1
+#define MAX_SCHEDULE_THREAD             1
 
 #define MAX_LISTEN_QUERY                128
 
@@ -26,8 +27,8 @@ __class_(RpollThread, RThread)
 public:
   CMemoryAlloc *contentMemory;
   CMemoryAlloc *bufferMemory;
-
 protected:
+  RMultiEvent *firstEvent;
   RpollGlobalApp* pApp;
   struct epoll_event waitEv[MAX_EV_NUMBER];
 
@@ -42,9 +43,12 @@ protected:
   inline INT GetBuffer(ADDR &item) { return bufferMemory->GetMemoryList(item); };
   inline INT FreeContent(ADDR item) { return contentMemory->FreeMemoryList(item); };
   inline INT FreeBuffer(ADDR item) { return bufferMemory->FreeMemoryList(item); };
+  INT SendToNextThread(ADDR item);
 
 public:
+  RpollThread();
   INT CreateRpollHandle(void);
+  INT AttachEvent(RMultiEvent *event);
 };
 
 __class_(RpollAcceptThread, RpollThread)
@@ -66,9 +70,14 @@ private:
 __class_(RpollWorkThread, RpollThread)
 private:
   RMultiEvent *eventFd;
-  virtual INT RpollThreadInit(void);
+  CApplication *firstApplication;
+private:
+  virtual INT RpollThreadInit(void);                            // called after clone
   virtual INT RThreadDoing(void);
 public:
+  RpollWorkThread();
+  INT   RpollWorkThreadInit(void);                              // called in main, before clone
+  INT   AttachApplication(CApplication *app);
   void  SetWaitfd(RMultiEvent* fd) { eventFd = fd; };
 };
 

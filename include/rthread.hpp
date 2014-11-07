@@ -26,6 +26,7 @@ public:
 };
 
 #define MAX_HANDLE_LOCK         31
+typedef INT (*isThis)(ADDR);
 
 class RMultiEvent
 {
@@ -35,11 +36,18 @@ private:
   INT   handleStart;
   INT   handleEnd;
   HANDLE_LOCK handleLock;
+  RMultiEvent *nextEvent;
   int   eventFd;
 public:
-  INT EventInit(INT num);
+  isThis isThisFunc;
+public:
+  INT EventInit(INT num, isThis func);
   INT EventWrite(ADDR addr);
   INT EventRead(ADDR &addr);
+  inline void SetNextEvent(RMultiEvent* event)
+    { nextEvent = event; };
+  inline RMultiEvent* GetNextEvent(void)
+    { return nextEvent; };
 };
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // per thread info, saved at the bottom of stack                                                   //

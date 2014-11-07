@@ -139,6 +139,7 @@ public:
   CContentItem *nextPeer;
   CContentItem *prevPeer;
   CContentItem *moreContent;
+  CBufferItem  *nowBuffer;
   CBufferItem  *moreBuffer;
   CBufferItem  *otherBuffer;
   CMemoryAlloc *contentType;
@@ -168,6 +169,7 @@ public:
 #define NextPeer                pCont->nextPeer
 #define PrevPeer                pCont->prevPeer
 #define MoreContent             pCont->moreContent
+#define NowBuffer               pCont->nowBuffer
 #define MoreBuffer              pCont->moreBuffer
 #define OtherBuffer             pCont->otherBuffer
 #define ContentType             pCont->ContentTypess

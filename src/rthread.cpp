@@ -52,7 +52,7 @@ INT REvent::EventRead(ADDR &addr)
   __CATCH
 }
 
-INT RMultiEvent::EventInit(INT num)
+INT RMultiEvent::EventInit(INT num, isThis func)
 {
   __TRY
     __DO(num > MAX_HANDLE_LOCK)
@@ -60,6 +60,7 @@ INT RMultiEvent::EventInit(INT num)
     handleStart = 0;
     handleEnd = num;        // there means empty
     handleNumber = num + 1;
+    isThisFunc = func;
     __DO1(eventFd,
 	  eventfd(0, EFD_SEMAPHORE));
   __CATCH
