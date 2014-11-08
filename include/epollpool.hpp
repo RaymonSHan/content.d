@@ -39,10 +39,40 @@ protected:
   virtual INT RThreadInit(void);
   virtual INT RpollThreadInit(void) = 0;
   virtual INT RThreadDoing(void) = 0;
-  inline INT GetContent(ADDR &item) { return contentMemory->GetMemoryList(item); };
-  inline INT GetBuffer(ADDR &item) { return bufferMemory->GetMemoryList(item); };
-  inline INT FreeContent(ADDR item) { return contentMemory->FreeMemoryList(item); };
-  inline INT FreeBuffer(ADDR item) { return bufferMemory->FreeMemoryList(item); };
+  inline INT GetContent(ADDR &item) { 
+    INT ret = contentMemory->GetMemoryList(item);
+    if (ret) return ret;                                        // error, not get
+    bzero(item.pVoid, sizeof(CContentItem));
+    return ret;
+  };
+  inline INT GetBuffer(ADDR &item) {
+    INT ret = bufferMemory->GetMemoryList(item);
+    if (ret) return ret;                                        // error, not get
+    item.NSize = item.NOper = 0;
+    item.RealStart = item.BufferData;
+    item.NextBuffer.aLong = 0;
+    return ret;
+  };
+  inline INT FreeContent(ADDR item) {
+    ADDR nextitem, thisitem;
+    if (item.CHandle) close(item.CHandle);
+    if (item.SHandle) close(item.SHandle);
+    if (item.MoreContent.pVoid) FreeContent(item.MoreContent);
+    if (item.NowBuffer.pVoid) FreeBuffer(item.NowBuffer);
+    if (item.MoreBuffer.pVoid) FreeBuffer(item.MoreBuffer);
+    if (item.OtherBuffer.pVoid) {
+      nextitem = item.OtherBuffer;
+      do {
+	thisitem = nextitem;
+	nextitem = thisitem.NextBuffer;
+	FreeBuffer(thisitem);
+      } while (nextitem.pVoid);
+    }
+    return contentMemory->FreeMemoryList(item); 
+  };
+  inline INT FreeBuffer(ADDR item) {
+    return bufferMemory->FreeMemoryList(item); 
+  };
   INT SendToNextThread(ADDR item);
 
 public:

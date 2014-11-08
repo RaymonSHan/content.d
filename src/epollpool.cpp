@@ -75,23 +75,23 @@ INT RpollThread::SendToNextThread(ADDR item)
 INT RpollAcceptThread::CreateListen(struct sockaddr &serveraddr)
 {
   struct epoll_event ev;
-  int listenfd, status;  
+  int   status;  
 
   __TRY
-    __DO1_(listenfd, 
-	   socket(AF_INET, SOCK_STREAM, 0), 
-	   "Error in create socket");
     __DO_ (GetContent(listenAddr), 
 	   "Error in getcontent");
+    __DO1_(listenAddr.SHandle, 
+	   socket(AF_INET, SOCK_STREAM, 0), 
+	   "Error in create socket");
 
-    ev.data.fd = listenAddr.BHandle = listenfd;
+    ev.data.u64 = listenAddr.aLong;
     ev.events = EPOLLIN | EPOLLET;
     __DO1_(status, 
-	   epoll_ctl(epollHandle, EPOLL_CTL_ADD, listenfd, &ev), 
+	   epoll_ctl(epollHandle, EPOLL_CTL_ADD, listenAddr.SHandle, &ev), 
 	   "Error in epoll ctl");
     listenAddr.ServerSocket.saddr = serveraddr;
     __DO1_(status, 
-	   bind(listenfd, &serveraddr, sizeof(sockaddr_in)), 
+	   bind(listenAddr.SHandle, &serveraddr, sizeof(sockaddr_in)), 
 	   "Error in bind");
   __CATCH
 }
@@ -101,7 +101,7 @@ INT RpollAcceptThread::BeginListen(int query)
   int   status;
   __TRY
     __DO1_(status, 
-	   listen(listenAddr.BHandle, query), 
+	   listen(listenAddr.SHandle, query), 
 	   "Error in begin listen");
   __CATCH
 }
@@ -115,22 +115,27 @@ INT RpollAcceptThread::RpollThreadInit(void)
 
 INT RpollAcceptThread::RThreadDoing(void)
 {
-  int evNumber, i, clifd;
+  int   evNumber, i;
   socklen_t clilen;
-  struct sockaddr_in cliaddr;
   struct epoll_event ev;
-
+  ADDR  acceptaddr, listenaddr;
+ 
   __TRY
     __DO1_(evNumber, 
 	   epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, 1000*100), 
 	   "Error in epoll wait");
     for(i=0; i<evNumber; i++) {
-      __DO1_(clifd, 
-	     accept(waitEv->data.fd, (sockaddr*)&cliaddr, &clilen), 
+      listenaddr.aLong = waitEv[i].data.u64;
+      __DO_ (GetContent(acceptaddr), 
+	     "Error in getcontent");
+      __DO_ (GetBuffer(acceptaddr.NowBuffer),
+	     "Error in getbuffer");
+      __DO1_(acceptaddr.SHandle,
+	     accept(listenaddr.SHandle, &(acceptaddr.ServerSocket.saddr), &clilen), 
 	     "Error in accept");
-      ev.data.fd = clifd;
+      ev.data.u64 = acceptaddr.aLong;
       ev.events = EPOLLIN | EPOLLET;
-      __DO_ (epoll_ctl(pApp->ScheduleRead[0]->epollHandle, EPOLL_CTL_ADD, clifd, &ev), 
+      __DO_ (epoll_ctl(pApp->ScheduleRead[0]->epollHandle, EPOLL_CTL_ADD, acceptaddr.SHandle, &ev), 
 	     "Error in epoll ctl");
     }
  __CATCH
@@ -146,18 +151,28 @@ INT RpollReadThread::RpollThreadInit(void)
 INT RpollReadThread::RThreadDoing(void)
 {
   int evNumber, i;
-  char line[1000];
   int readed;
-  ADDR tryaddr = {0};
+  ADDR readaddr, readbuffer;
   __TRY
     __DO1_(evNumber, 
 	   epoll_wait(epollHandle, waitEv, MAX_EV_NUMBER, 1000*100), 
 	   "Error in epoll wait");
     for(i = 0; i < evNumber; i++) {
-      readed = read(waitEv->data.fd, line, 1000);
+      readaddr.aLong = waitEv[i].data.u64;
+      readbuffer = readaddr.NowBuffer;
+
+      // should loop till error
+      __DO1_(readed,
+	     read(readaddr.SHandle, 
+		  readbuffer.RealStart + readbuffer.NSize, 
+		  SIZE_DATA_BUFFER - readbuffer.NSize),
+	     "Error in read");
+      if (readed > 0) readbuffer.NSize += readed;
+      if (readed == 0) FreeContent(readaddr);
+
       printf("read %d\n", readed);
     }
-    SendToNextThread(tryaddr);
+    SendToNextThread(readaddr);
   __CATCH
 }
 

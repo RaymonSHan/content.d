@@ -133,16 +133,17 @@ public:                         // statistics info for debug
 class CContentItem : public CListItem
 {
 public:
-  int   bHandle;
+  int   cliHandle;
+  int   serHandle;
   SOCKADDR serverSocket;
   SOCKADDR clientSocket;
-  CContentItem *nextPeer;
-  CContentItem *prevPeer;
-  CContentItem *moreContent;
-  CBufferItem  *nowBuffer;
-  CBufferItem  *moreBuffer;
-  CBufferItem  *otherBuffer;
-  CMemoryAlloc *contentType;
+  //  CContentItem *nextPeer;
+  //  CContentItem *prevPeer;
+  ADDR  moreContent;
+  ADDR  nowBuffer;
+  ADDR  moreBuffer;
+  ADDR  otherBuffer;
+  //  CMemoryAlloc *contentType;
   RThread *workThread;;
 };
  
@@ -151,11 +152,12 @@ class CBufferItem : public CListItem
 public:
   INT   nSize;
   INT   nOper;
-  CMemoryAlloc *bufferType;
-  ADDR  realStart;
+  //  CMemoryAlloc *bufferType;
+  char  *realStart;
+  ADDR  nextBuffer;
   char  bufferName[CHAR_SMALL];
   char  ahead[SIZE_NORMAL_PAGE - CHAR_SMALL - 4*8];             // make following page border
-  char  bufferData[SIZE_DATA_BUFFER - SIZE_NORMAL_PAGE];        // total size SIZE_DATA_BUFFER
+  char  bufferData[SIZE_DATA_BUFFER];                           // CBufferItem total size 4M
 };
 
 #define UsedList                pList->usedList
@@ -163,7 +165,8 @@ public:
 #define ListFlag                pList->listFlag
 #define LinkBuffer              pList->linkBuffer
 
-#define BHandle                 pCont->bHandle
+#define CHandle                 pCont->cliHandle
+#define SHandle                 pCont->serHandle
 #define ServerSocket            pCont->serverSocket
 #define ClientSocket            pCont->clientSocket
 #define NextPeer                pCont->nextPeer
@@ -179,6 +182,7 @@ public:
 #define NOper                   pBuff->nOper
 #define BufferType              pBuff->bufferType
 #define RealStart               pBuff->realStart
+#define NextBuffer              pBuff->nextBuffer
 #define BufferName              pBuff->bufferName
 #define BufferData              pBuff->bufferData
 #endif

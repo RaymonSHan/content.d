@@ -15,6 +15,7 @@ RThreadResource::RThreadResource(INT size)
 INT RThreadResource::SetResourceOffset(INT size)
 {
   nowOffset = LockAdd(RThreadResource::globalResourceOffset, PAD_INT(size, 0, 64));
+  printf("in offset %llx\n", nowOffset);
   return nowOffset;
 }
 

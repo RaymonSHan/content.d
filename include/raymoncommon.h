@@ -37,7 +37,7 @@
 #define SIZE_NORMAL_PAGE        (0x01LL << 12)                  // 4K
 #define SIZE_HUGE_PAGE          (0x01LL << 21)                  // 2M
 #define SIZE_THREAD_STACK       (0x01LL << 24)                  // 16M
-#define SIZE_DATA_BUFFER        (0x01LL << 22)                  // 4M
+#define SIZE_DATA_BUFFER        ((0x01LL << 22) - SIZE_NORMAL_PAGE) // 4M
 
 #define NEG_SIZE_THREAD_STACK   (-1*SIZE_THREAD_STACK)
 #define SIZE_SMALL_PAD          8
