@@ -60,6 +60,7 @@ INT RMultiEvent::EventInit(INT num, isThis func)
     handleStart = 0;
     handleEnd = num;        // there means empty
     handleNumber = num + 1;
+    nextEvent = 0;
     isThisFunc = func;
     __DO1(eventFd,
 	  eventfd(0, EFD_SEMAPHORE));
@@ -69,6 +70,7 @@ INT RMultiEvent::EventInit(INT num, isThis func)
 INT RMultiEvent::EventWrite(ADDR addr)
 {
   int status;
+  printf("write event %p\n", addr.pVoid);
   __TRY
     __DO (handleStart == handleEnd);
     __LOCK(handleLock);
@@ -90,6 +92,8 @@ INT RMultiEvent::EventRead(ADDR &addr)
     if (++handleEnd == handleNumber) handleEnd = 0;
     addr = handleBuffer[handleEnd];
     __FREE(handleLock);
+    printf("read event %p\n", addr.pVoid);
+
   __CATCH
 }
 

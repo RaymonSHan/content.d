@@ -2,10 +2,13 @@
 #include "../include/raymoncommon.h"
 #include "../include/rmemory.hpp"
 #include "../include/rthread.hpp"
+#include "../include/application.hpp"
 #include "../include/epollpool.hpp"
 #include "../include/testmain.hpp"
 
 RpollGlobalApp RpollApp;
+CEchoApplication EchoApp;
+CWriteApplication WriteApp;
 
 RpollGlobalApp* GetApplication()
 {
@@ -74,11 +77,16 @@ int main (int, char**)
     inet_aton(local_addr,&(addr.saddrin.sin_addr));
     addr.saddrin.sin_port=htons(8998);
 
-    for (int i=0; i<MAX_WORK_THREAD; i++)
+    for (int i=0; i<MAX_WORK_THREAD; i++) {
       RpollApp.RpollWorkGroup[i].SetWaitfd(&ev);
+      RpollApp.RpollWorkGroup[i].AttachApplication(&EchoApp);
+      RpollApp.RpollWorkGroup[i].AttachApplication(&WriteApp);
+
+    }
 
     for (int i=0; i<MAX_RPOLL_READ_THREAD; i++)
       RpollApp.RpollReadGroup[i].AttachEvent(&ev);
+
     RpollApp.StartRpoll(RUN_WITH_CONSOLE, addr.saddr);
 
     retthread = waitpid(-1, &status, __WCLONE);

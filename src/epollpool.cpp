@@ -41,26 +41,28 @@ INT RpollThread::AttachEvent(RMultiEvent *event)
   RMultiEvent *thisevent, *nextevent;
   __TRY
     if (firstEvent) {
-      thisevent = firstEvent;
+      nextevent = firstEvent;
       do {
+	thisevent = nextevent;
 	nextevent = thisevent->GetNextEvent();
       } while (nextevent);
       thisevent->SetNextEvent(event);
     }
     else firstEvent = event;
+    event->SetNextEvent(0);
   __CATCH
 }
 
 INT RpollThread::SendToNextThread(ADDR item)
 {
   RMultiEvent * thisevent;
-  INT isok;
+  INT isthis;
 
   __TRY
     thisevent = firstEvent;
     while (thisevent) {
-      isok = thisevent->isThisFunc(item);
-      if (isok) {
+      isthis = thisevent->isThisFunc(item);
+      if (!isthis) {
 	thisevent->EventWrite(item);
 	break;
       }
@@ -182,14 +184,18 @@ INT RpollWorkThread::AttachApplication(CApplication *app)
 {
   CApplication *thisapp, *nextapp;
   __TRY
+    printf("in attach app %p\n", firstApplication);
     if (firstApplication) {
-      thisapp = firstApplication;
+      nextapp = firstApplication;
       do {
+	thisapp = nextapp;
 	nextapp = thisapp->GetNextApplication();
       } while (nextapp);
       thisapp->SetNextApplication(app);
     }
     else firstApplication = app;
+    app->SetNextApplication(0);
+    printf("in attach app %p\n", firstApplication);
   __CATCH
 }
 
@@ -208,19 +214,19 @@ INT RpollWorkThread::RpollThreadInit(void)                      // called after 
 
 INT RpollWorkThread::RThreadDoing(void)
 {
-  ADDR buff;
+  ADDR cont;
   CApplication *thisapp;
 
   __TRY
-    __DO_(eventFd->EventRead(buff), "error reading");
+
+    __DO_(eventFd->EventRead(cont), "error reading");
+    printf("in work doing %p\n", firstApplication);
     thisapp = firstApplication;
     while (thisapp) {
-      thisapp->DoApplication(buff);
+      thisapp->DoApplication(cont);
       thisapp = thisapp->GetNextApplication();
     }
-    SendToNextThread(buff);
-
-  //    printf("in work, %p, %lld\n", &buff, buff.aLong);
+    SendToNextThread(cont);
   __CATCH
 }
 
@@ -242,7 +248,7 @@ INT RpollScheduleThread::RpollThreadInit(void)
 INT RpollScheduleThread::RThreadDoing(void)
 {
   __TRY
-    contentMemory->DisplayFree();
+    //    contentMemory->DisplayFree();
     sleep(2);
   __CATCH
 }
