@@ -50,23 +50,23 @@ protected:
     if (ret) return ret;                                        // error, not get
     item.NSize = item.NOper = 0;
     item.RealStart = item.BufferData;
-    item.NextBuffer.aLong = 0;
+    item.NextBuffer = 0;
     return ret;
   };
   inline INT FreeContent(ADDR item) {
     ADDR nextitem, thisitem;
     if (item.CHandle) close(item.CHandle);
     if (item.SHandle) close(item.SHandle);
-    if (item.MoreContent.pVoid) FreeContent(item.MoreContent);
-    if (item.NowBuffer.pVoid) FreeBuffer(item.NowBuffer);
-    if (item.MoreBuffer.pVoid) FreeBuffer(item.MoreBuffer);
-    if (item.OtherBuffer.pVoid) {
+    if (item.MoreContent != 0) FreeContent(item.MoreContent);
+    if (item.NowBuffer != 0) FreeBuffer(item.NowBuffer);
+    if (item.MoreBuffer != 0) FreeBuffer(item.MoreBuffer);
+    if (item.OtherBuffer != 0) {
       nextitem = item.OtherBuffer;
       do {
 	thisitem = nextitem;
 	nextitem = thisitem.NextBuffer;
 	FreeBuffer(thisitem);
-      } while (nextitem.pVoid);
+      } while (nextitem != 0);
     }
     return contentMemory->FreeMemoryList(item); 
   };

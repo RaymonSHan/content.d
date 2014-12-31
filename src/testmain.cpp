@@ -6,9 +6,14 @@
 #include "../include/epollpool.hpp"
 #include "../include/testmain.hpp"
 
+INT returnTRUE(ADDR)
+{
+  return 0;
+};
+
 RpollGlobalApp RpollApp;
-CEchoApplication EchoApp;
-CWriteApplication WriteApp;
+CEchoApplication EchoApp(returnTRUE);
+CWriteApplication WriteApp(returnTRUE);
 
 RpollGlobalApp* GetApplication()
 {
@@ -50,11 +55,6 @@ void SetupSIG(int num, SigHandle func)
 }
 
 #ifdef  TEST_THREAD
-
-INT returnTRUE(ADDR)
-{
-  return 0;
-};
 
 int main (int, char**)
 {

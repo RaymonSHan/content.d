@@ -153,11 +153,11 @@ public:
   INT   nSize;
   INT   nOper;
   //  CMemoryAlloc *bufferType;
-  char  *realStart;
+  PCHAR realStart;
   ADDR  nextBuffer;
-  char  bufferName[CHAR_SMALL];
-  char  ahead[SIZE_NORMAL_PAGE - CHAR_SMALL - 4*8];             // make following page border
-  char  bufferData[SIZE_DATA_BUFFER];                           // CBufferItem total size 4M
+  CHAR  bufferName[CHAR_SMALL];
+  CHAR  ahead[SIZE_NORMAL_PAGE - CHAR_SMALL - 4*8];             // make following page border
+  CHAR  bufferData[SIZE_DATA_BUFFER];                           // CBufferItem total size 4M
 };
 
 #define UsedList                pList->usedList

@@ -26,6 +26,14 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Common const                                                                                    //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
+typedef long long int           SINT;
+typedef char                    SCHAR;
+typedef unsigned long long int  INT;                            // basic type
+typedef unsigned char           CHAR;                           // basic type
+typedef unsigned long long int* PINT;
+typedef unsigned char*          PCHAR;
+typedef void*                   PVOID;
+
 #define SEG_START_BUFFER        (0x52LL << 40)                  // 'R'
 #define SEG_START_STACK         (0x53LL << 40)                  // 'S'
 
@@ -42,7 +50,7 @@
 #define NEG_SIZE_THREAD_STACK   (-1*SIZE_THREAD_STACK)
 #define SIZE_SMALL_PAD          8
 
-#define INT			long long int                   // basic type
+
 #define BOOL                    bool
 #define HANDLE_LOCK             volatile long long int		//
 
@@ -66,7 +74,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Error control                                                                                   //
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
-
 #define __RSTRING2(x)           #x
 #define __RSTRING(x)            __RSTRING2(x)
 
@@ -95,8 +102,7 @@ void    __MESSAGE(INT level, const char * _Format, ...);
 #define __INFO(level, _Format,...)					\
   { __MESSAGE(level,  _Format,##__VA_ARGS__); }
 #define __INFOb(level, _Format,...)					\
-  { __MESSAGE(level, _Format,##__VA_ARGS__);				\
-    ret_err = 0; goto error_stop;}
+  { __MESSAGE(level, _Format,##__VA_ARGS__); __BREAK_OK }
 
 #define __DO1c_(val, func, _Format,...) {				\
     setLine();								\
@@ -104,14 +110,8 @@ void    __MESSAGE(INT level, const char * _Format, ...);
     if (val == -1) 							\
       __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
   }
-#define __DO1c(func)            __DO1c_(func, NULL)
-
-#define __DOc_(func, _Format,...) {					\
-    setLine();								\
-    if (func)								\
-      __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
-  }
-#define __DOc(func)             __DOc_(func, NULL)
+#define __DO1c(val, func)						\
+  { setLine(); val = func; }
 
 #define __DO1_(val, func, _Format,...) {				\
     setLine();								\
@@ -121,7 +121,16 @@ void    __MESSAGE(INT level, const char * _Format, ...);
       __BREAK								\
     }									\
   }
-#define __DO1(val, func)             __DO1_(val, func, NULL)
+#define __DO1(val, func)						\
+  { setLine(); val = func; if (val == -1) __BREAK; }
+
+#define __DOc_(func, _Format,...) {					\
+    setLine();								\
+    if (func)								\
+      __INFO(MESSAGE_DEBUG, _Format,##__VA_ARGS__);			\
+  }
+#define __DOc(func)							\
+  { setLine(); func; }
 
 #define __DO_(func, _Format,...) {					\
     setLine();								\
@@ -130,7 +139,8 @@ void    __MESSAGE(INT level, const char * _Format, ...);
       __BREAK								\
     }									\
   }
-#define __DO(func)              __DO_(func, NULL)
+#define __DO(func)							\
+  { setLine(); if (func) __BREAK }
 
 #define __DOb_(func, _Format,...) {					\
     setLine();								\
@@ -139,7 +149,8 @@ void    __MESSAGE(INT level, const char * _Format, ...);
     }									\
   __BREAK								\
   }
-#define __DOb(func)             __DOb_(func, NULL)
+#define __DOb(func)							\
+  { setLine(); func; __BREAK }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Synchronous lock                                                                                //

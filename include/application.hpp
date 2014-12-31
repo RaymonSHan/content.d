@@ -8,23 +8,34 @@ class CApplication
 private:
   CApplication *nextApplication;
 public:
-   inline void SetNextApplication(CApplication *app)
+  isThis isThisApp;
+public:
+  CApplication(isThis func)
+    { isThisApp = func; };
+  inline void SetNextApplication(CApplication *app)
     { nextApplication = app; };
-   inline CApplication* GetNextApplication(void)
+  inline CApplication* GetNextApplication(void)
     { return nextApplication; };
   virtual INT DoApplication(ADDR mContent) = 0;
 };
 
-class CEchoApplication : public CApplication
-{
-public:
-  virtual INT DoApplication(ADDR mContent);
-};
+#define DefineApplicationBegin(app)			\
+  class app : public CApplication			\
+  {
 
-class CWriteApplication : public CApplication
-{
-public:
-  virtual INT DoApplication(ADDR mContent);
-};
+#define DefineApplicationEnd(app)			\
+  public:						\
+    app(isThis func);					\
+    virtual INT DoApplication(ADDR mContent);		\
+  };
+
+#define DefineApplication(app, other)		\
+  DefineApplicationBegin(app);			\
+  other						\
+  DefineApplicationEnd(app);
+
+
+DefineApplication(CEchoApplication, );
+DefineApplication(CWriteApplication, );
 
 #endif  // INCLUDE_APPLICATION_HPP

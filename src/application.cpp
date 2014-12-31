@@ -3,6 +3,12 @@
 #include "../include/raymoncommon.h"
 #include "../include/application.hpp"
 
+#define InheritApplication(app)			\
+  app::app(isThis func) : CApplication(func) {}
+
+InheritApplication(CEchoApplication);
+InheritApplication(CWriteApplication);
+
 INT CEchoApplication::DoApplication(ADDR mContent)
 {
   printf("in echo %p\n", mContent.pVoid);

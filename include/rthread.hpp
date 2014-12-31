@@ -26,7 +26,6 @@ public:
 };
 
 #define MAX_HANDLE_LOCK         31
-typedef INT (*isThis)(ADDR);
 
 class RMultiEvent
 {
@@ -134,8 +133,8 @@ public:
 #define MAX_NEST_LOOP           255                             // number of func call nest
 
 typedef struct perTraceInfo {
-  char  *fileInfo;
-  char  *funcInfo;
+  PCHAR fileInfo;
+  PCHAR funcInfo;
   INT   lineInfo;
   INT   pad;
 }perTraceInfo;
@@ -143,7 +142,7 @@ typedef struct perTraceInfo {
 // MUST be multi of NORMAL_PAGE_SIZE
 typedef struct threadTraceInfo {
   INT   nowLevel;
-  const char  *className;
+  const char *className;
   INT   pad[2];
   perTraceInfo calledInfo[MAX_NEST_LOOP];
 }threadTraceInfo;

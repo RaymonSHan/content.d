@@ -55,11 +55,10 @@ INT RpollThread::AttachEvent(RMultiEvent *event)
 
 INT RpollThread::SendToNextThread(ADDR item)
 {
-  RMultiEvent * thisevent;
+  RMultiEvent *thisevent;
   INT isthis;
 
   __TRY
-    thisevent = firstEvent;
     while (thisevent) {
       isthis = thisevent->isThisFunc(item);
       if (!isthis) {

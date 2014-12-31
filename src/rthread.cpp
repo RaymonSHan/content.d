@@ -15,7 +15,7 @@ RThreadResource::RThreadResource(INT size)
 INT RThreadResource::SetResourceOffset(INT size)
 {
   nowOffset = LockAdd(RThreadResource::globalResourceOffset, PAD_INT(size, 0, 64));
-  printf("in offset %llx\n", nowOffset);
+  //  printf("in offset %llx\n", nowOffset);
   return nowOffset;
 }
 
@@ -71,7 +71,6 @@ INT RMultiEvent::EventInit(INT num, isThis func)
 INT RMultiEvent::EventWrite(ADDR addr)
 {
   int status;
-  printf("write event %p\n", addr.pVoid);
   __TRY
     __DO (handleStart == handleEnd);
     __LOCK(handleLock);
@@ -93,10 +92,10 @@ INT RMultiEvent::EventRead(ADDR &addr)
     if (++handleEnd == handleNumber) handleEnd = 0;
     addr = handleBuffer[handleEnd];
     __FREE(handleLock);
-    printf("read event %p\n", addr.pVoid);
-
   __CATCH
 }
+
+#include <typeinfo>
 
 volatile INT RThread::globalThreadNumber = 1;
 volatile INT RThread::nowThreadNumber = 0;
@@ -108,7 +107,6 @@ RThread::RThread()
   shouldQuit = 0;
   nowThread = 0;
 }
-#include <typeinfo>
 
 INT RThread::RThreadClone(void)
 {
