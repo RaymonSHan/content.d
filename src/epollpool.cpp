@@ -12,6 +12,7 @@
 RpollThread::RpollThread()
 {
   firstEvent = 0;
+  waitEvent = 0;
 }
 
 INT RpollThread::RThreadInit(void)
@@ -36,38 +37,20 @@ INT RpollThread::CreateRpollHandle(void)
   __CATCH
 }
 
-INT RpollThread::AttachEvent(RMultiEvent *event)
-{
-  RMultiEvent *thisevent, *nextevent;
-  __TRY__
-    event->SetNextEvent(0);
-    if (firstEvent) {
-      nextevent = firstEvent;
-      do {
-	thisevent = nextevent;
-	nextevent = thisevent->GetNextEvent();
-      } while (nextevent);
-      thisevent->SetNextEvent(event);
-    }
-    else firstEvent = event;
-  __CATCH__
-}
-
 INT RpollThread::SendToNextThread(ADDR item)
 {
-  RMultiEvent *thisevent;
-  INT isthis;
+  RMultiEvent *thisevent = firstEvent;
 
-  __TRY__
+  __TRY
     while (thisevent) {
-      isthis = thisevent->isThisFunc(item);
-      if (!isthis) {
+      if (!thisevent->isThisFunc || !thisevent->isThisFunc(item)) {
 	thisevent->EventWrite(item);
-	break;
+	__BREAK_OK; 
       }
       thisevent = thisevent->GetNextEvent();
     }
-  __CATCH__
+  __BREAK
+  __CATCH
 }
 
 
@@ -190,37 +173,16 @@ INT RpollWriteThread::RThreadDoing(void)
 
 RpollWorkThread::RpollWorkThread(void)
 {
-  eventFd = 0;
-  firstApplication = 0;
 }
 
-INT RpollWorkThread::AttachApplication(CApplication *app)
-{
-  CApplication *thisapp, *nextapp;
-  __TRY__
-    printf("in attach app %p\n", firstApplication);
-    if (firstApplication) {
-      nextapp = firstApplication;
-      do {
-	thisapp = nextapp;
-	nextapp = thisapp->GetNextApplication();
-      } while (nextapp);
-      thisapp->SetNextApplication(app);
-    }
-    else firstApplication = app;
-    app->SetNextApplication(0);
-    printf("in attach app %p\n", firstApplication);
-  __CATCH__
-}
-
-INT RpollWorkThread::RpollWorkThreadInit(void)                  // called in main, before clone
+INT RpollWorkThread::RpollWorkThreadInit(void)          // called in main, before clone
 {
   __TRY__
     // should do SetWaitfd, AttachApplication
   __CATCH__
 }
 
-INT RpollWorkThread::RpollThreadInit(void)                      // called after clone
+INT RpollWorkThread::RpollThreadInit(void)              // called after clone
 {
   __TRY__
   __CATCH__
@@ -229,17 +191,11 @@ INT RpollWorkThread::RpollThreadInit(void)                      // called after 
 INT RpollWorkThread::RThreadDoing(void)
 {
   ADDR cont;
-  CApplication *thisapp;
 
   __TRY
+    __DO_(waitEvent->EventRead(cont), "error reading");
+    waitEvent->workApp->DoApplication(cont);
 
-    __DO_(eventFd->EventRead(cont), "error reading");
-    printf("in work doing %p\n", firstApplication);
-    thisapp = firstApplication;
-    while (thisapp) {
-      thisapp->DoApplication(cont);
-      thisapp = thisapp->GetNextApplication();
-    }
     SendToNextThread(cont);
   __CATCH
 }
@@ -274,8 +230,10 @@ RpollGlobalApp::RpollGlobalApp()
 INT RpollGlobalApp::InitRpollGlobalApp(void)
 {
   __TRY
-    __DO(ContentMemory.SetMemoryBuffer(NUMBER_CONTENT, sizeof(CContentItem), SIZE_CACHE, false));
-    __DO(BufferMemory.SetMemoryBuffer(NUMBER_BUFFER, sizeof(CBufferItem), SIZE_NORMAL_PAGE, true));
+    __DO(ContentMemory.SetMemoryBuffer
+	 (NUMBER_CONTENT, sizeof(CContentItem), SIZE_CACHE, false));
+    __DO(BufferMemory.SetMemoryBuffer
+	 (NUMBER_BUFFER, sizeof(CBufferItem), SIZE_NORMAL_PAGE, true));
   __CATCH
 }
 

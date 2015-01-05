@@ -29,6 +29,7 @@ public:
   CMemoryAlloc *bufferMemory;
 protected:
   RMultiEvent *firstEvent;
+  RMultiEvent *waitEvent;
   RpollGlobalApp* pApp;
   struct epoll_event waitEv[MAX_EV_NUMBER];
 
@@ -78,7 +79,10 @@ protected:
 public:
   RpollThread();
   INT CreateRpollHandle(void);
-  INT AttachEvent(RMultiEvent *event);
+  inline void AttachEvent(RMultiEvent *event)                   // for SendToNextThread
+    { firstEvent = event; };
+  inline void SetWaitfd(RMultiEvent *fd)                        // for Wait
+    { waitEvent = fd; };
 };
 
 __class_(RpollAcceptThread, RpollThread)
@@ -99,16 +103,11 @@ private:
 
 __class_(RpollWorkThread, RpollThread)
 private:
-  RMultiEvent *eventFd;
-  CApplication *firstApplication;
-private:
-  virtual INT RpollThreadInit(void);                            // called after clone
+  virtual INT RpollThreadInit(void);                    // called after clone
   virtual INT RThreadDoing(void);
 public:
   RpollWorkThread();
-  INT   RpollWorkThreadInit(void);                              // called in main, before clone
-  INT   AttachApplication(CApplication *app);
-  void  SetWaitfd(RMultiEvent* fd) { eventFd = fd; };
+  INT   RpollWorkThreadInit(void);                      // called in main, before clone
 };
 
 __class_(RpollReadThread, RpollThread)

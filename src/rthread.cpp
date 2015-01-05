@@ -15,7 +15,6 @@ RThreadResource::RThreadResource(INT size)
 INT RThreadResource::SetResourceOffset(INT size)
 {
   nowOffset = LockAdd(RThreadResource::globalResourceOffset, PAD_INT(size, 0, 64));
-  //  printf("in offset %llx\n", nowOffset);
   return nowOffset;
 }
 
@@ -53,16 +52,17 @@ INT REvent::EventRead(ADDR &addr)
   __CATCH
 }
 
-INT RMultiEvent::EventInit(INT num, isThis func)
+INT RMultiEvent::EventInit(INT num, isThis func, CApplication *app)
 {
   __TRY
-    __DO(num > MAX_HANDLE_LOCK)
+    __DO  (num > MAX_HANDLE_LOCK)
     handleLock = NOT_IN_PROCESS;
     handleStart = 0;
-    handleEnd = num;        // there means empty
-    handleNumber = num + 1; // only 0 to num-1 be used
+    handleEnd = num;                                            // there means empty
+    handleNumber = num + 1;                                     // only 0 to num-1 be used
     nextEvent = 0;
     isThisFunc = func;
+    workApp = app;
     __DO1(eventFd,
 	  eventfd(0, EFD_SEMAPHORE));
   __CATCH
@@ -71,6 +71,7 @@ INT RMultiEvent::EventInit(INT num, isThis func)
 INT RMultiEvent::EventWrite(ADDR addr)
 {
   int status;
+
   __TRY
     __LOCK(handleLock);
     __DO (handleStart == handleEnd);

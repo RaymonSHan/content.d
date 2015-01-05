@@ -4,7 +4,7 @@
 #include "../include/application.hpp"
 
 #define InheritApplication(app)			\
-  app::app(isThis func) : CApplication(func) {}
+  app::app() : CApplication() {}
 
 InheritApplication(CEchoApplication);
 InheritApplication(CWriteApplication);

@@ -8,12 +8,21 @@
 
 INT returnTRUE(ADDR)
 {
+  printf("In returnTRUE\n");
   return 0;
 };
 
+INT returnFALSE(ADDR)
+{
+  printf("In returnFALSE\n");
+  return 0;
+};
+
+
+
 RpollGlobalApp RpollApp;
-CEchoApplication EchoApp(returnTRUE);
-CWriteApplication WriteApp(returnTRUE);
+CEchoApplication EchoApp;
+CWriteApplication WriteApp;
 
 RpollGlobalApp* GetApplication()
 {
@@ -60,16 +69,19 @@ int main (int, char**)
 {
   union SOCKADDR addr;
   char local_addr[] = "127.0.0.1";  
-  int retthread, status;
+  int retthread, status, i;
 
   SetupSIG(SIGSEGV, SIGSEGV_Handle);                            // sign 11
   SetupSIG(SIGILL, SIGSEGV_Handle);                             // sign 4
   SetupSIG(SIGTERM, SIGSEGV_Handle);                            // sign 15
 
-  RMultiEvent ev;
+  RMultiEvent evEcho;
+  RMultiEvent evWriteApp;
 
   __TRY
-    __DO_(ev.EventInit(30, returnTRUE), "error in event init");
+    __DO_(evEcho.EventInit(30, returnTRUE, &EchoApp), "error in event init");
+    __DO_(evWriteApp.EventInit(30, returnTRUE, NULL), "error in event init");
+
     RpollApp.InitRpollGlobalApp();                              // setup memory
 
     bzero(&addr.saddrin, sizeof(sockaddr_in));   
@@ -77,15 +89,17 @@ int main (int, char**)
     inet_aton(local_addr,&(addr.saddrin.sin_addr));
     addr.saddrin.sin_port=htons(8998);
 
-    for (int i=0; i<MAX_WORK_THREAD; i++) {
-      RpollApp.RpollWorkGroup[i].SetWaitfd(&ev);
-      RpollApp.RpollWorkGroup[i].AttachApplication(&EchoApp);
-      RpollApp.RpollWorkGroup[i].AttachApplication(&WriteApp);
-
+    for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++) {
+      RpollApp.RpollWriteGroup[i].SetWaitfd(&evEcho);
     }
 
-    for (int i=0; i<MAX_RPOLL_READ_THREAD; i++)
-      RpollApp.RpollReadGroup[i].AttachEvent(&ev);
+    for (i=0; i<MAX_WORK_THREAD; i++) {
+      RpollApp.RpollWorkGroup[i].AttachEvent(&evWriteApp);
+      RpollApp.RpollWorkGroup[i].SetWaitfd(&evEcho);
+    }
+
+    for (i=0; i<MAX_RPOLL_READ_THREAD; i++)
+      RpollApp.RpollReadGroup[i].AttachEvent(&evEcho);
 
     RpollApp.StartRpoll(RUN_WITH_CONSOLE, addr.saddr);
 

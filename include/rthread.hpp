@@ -2,6 +2,7 @@
 #define INCLUDE_RTHREAD_HPP
 
 #include "rtype.hpp"
+class CApplication;
 
 class RThreadResource
 {
@@ -39,8 +40,9 @@ private:
   int   eventFd;
 public:
   isThis isThisFunc;
+  CApplication* workApp;
 public:
-  INT EventInit(INT num, isThis func);
+  INT EventInit(INT num, isThis func, CApplication *app = 0);
   INT EventWrite(ADDR addr);
   INT EventRead(ADDR &addr);
   inline void SetNextEvent(RMultiEvent* event)
@@ -48,9 +50,9 @@ public:
   inline RMultiEvent* GetNextEvent(void)
     { return nextEvent; };
 };
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// per thread info, saved at the bottom of stack                                                   //
-////////\///////////////////////\///////////////////////////////\//////////////////////////        //
+///////////////////////////////////////////////////////////////////////////////////////////
+// per thread info, saved at the bottom of stack                                         //
+////////\///////////////////////\///////////////////////////////\////////////////        //
 #define PAD_TRACE_INFO          SIZE_NORMAL_PAGE
 
 #define getThreadInfo(info, off)				\
