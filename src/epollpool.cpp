@@ -39,7 +39,8 @@ INT RpollThread::CreateRpollHandle(void)
 INT RpollThread::AttachEvent(RMultiEvent *event)
 {
   RMultiEvent *thisevent, *nextevent;
-  __TRY
+  __TRY__
+    event->SetNextEvent(0);
     if (firstEvent) {
       nextevent = firstEvent;
       do {
@@ -49,8 +50,7 @@ INT RpollThread::AttachEvent(RMultiEvent *event)
       thisevent->SetNextEvent(event);
     }
     else firstEvent = event;
-    event->SetNextEvent(0);
-  __CATCH
+  __CATCH__
 }
 
 INT RpollThread::SendToNextThread(ADDR item)
@@ -58,7 +58,7 @@ INT RpollThread::SendToNextThread(ADDR item)
   RMultiEvent *thisevent;
   INT isthis;
 
-  __TRY
+  __TRY__
     while (thisevent) {
       isthis = thisevent->isThisFunc(item);
       if (!isthis) {
@@ -67,7 +67,7 @@ INT RpollThread::SendToNextThread(ADDR item)
       }
       thisevent = thisevent->GetNextEvent();
     }
-  __CATCH
+  __CATCH__
 }
 
 
@@ -177,15 +177,15 @@ INT RpollReadThread::RThreadDoing(void)
 
 INT RpollWriteThread::RpollThreadInit(void)
 {
-  __TRY
-  __CATCH
+  __TRY__
+  __CATCH__
 }
 
 INT RpollWriteThread::RThreadDoing(void)
 {
-  __TRY
+  __TRY__
     sleep(1);
-  __CATCH
+  __CATCH__
 }
 
 RpollWorkThread::RpollWorkThread(void)
@@ -197,7 +197,7 @@ RpollWorkThread::RpollWorkThread(void)
 INT RpollWorkThread::AttachApplication(CApplication *app)
 {
   CApplication *thisapp, *nextapp;
-  __TRY
+  __TRY__
     printf("in attach app %p\n", firstApplication);
     if (firstApplication) {
       nextapp = firstApplication;
@@ -210,20 +210,20 @@ INT RpollWorkThread::AttachApplication(CApplication *app)
     else firstApplication = app;
     app->SetNextApplication(0);
     printf("in attach app %p\n", firstApplication);
-  __CATCH
+  __CATCH__
 }
 
 INT RpollWorkThread::RpollWorkThreadInit(void)                  // called in main, before clone
 {
-  __TRY
+  __TRY__
     // should do SetWaitfd, AttachApplication
-  __CATCH
+  __CATCH__
 }
 
 INT RpollWorkThread::RpollThreadInit(void)                      // called after clone
 {
-  __TRY
-  __CATCH
+  __TRY__
+  __CATCH__
 }
 
 INT RpollWorkThread::RThreadDoing(void)
@@ -247,7 +247,7 @@ INT RpollWorkThread::RThreadDoing(void)
 INT RpollScheduleThread::RpollThreadInit(void)
 {
   int i;
-  __TRY
+  __TRY__
     for (i=0; i<MAX_WORK_THREAD; i++)
       pApp->ScheduleWork[i] = &(pApp->RpollWorkGroup[i]);
     for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
@@ -256,15 +256,15 @@ INT RpollScheduleThread::RpollThreadInit(void)
       pApp->ScheduleRead[i] = &(pApp->RpollReadGroup[i]);
     for (i=0; i<MAX_RPOLL_WRITE_THREAD; i++)
       pApp->ScheduleWrite[i] = &(pApp->RpollWriteGroup[i]);
-  __CATCH
+  __CATCH__
 }
 
 INT RpollScheduleThread::RThreadDoing(void)
 {
-  __TRY
+  __TRY__
     //    contentMemory->DisplayFree();
     sleep(2);
-  __CATCH
+  __CATCH__
 }
 
 RpollGlobalApp::RpollGlobalApp()
@@ -312,7 +312,7 @@ INT RpollGlobalApp::KillAllChild(void)
   int i;
   if (havedone) return 0;
   else havedone = 1;
-  __TRY
+  __TRY__
     for (i=0; i<MAX_RPOLL_ACCEPT_THREAD; i++)
       kill(RpollAcceptGroup[i].ReturnWorkId(), SIGTERM);
     for (i=0; i<MAX_RPOLL_READ_THREAD; i++)
@@ -324,6 +324,6 @@ INT RpollGlobalApp::KillAllChild(void)
 
     kill(RScheduleGroup.ReturnWorkId(), SIGTERM);
 
-  __CATCH
+  __CATCH__
 }
 

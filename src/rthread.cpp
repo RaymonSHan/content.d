@@ -60,7 +60,7 @@ INT RMultiEvent::EventInit(INT num, isThis func)
     handleLock = NOT_IN_PROCESS;
     handleStart = 0;
     handleEnd = num;        // there means empty
-    handleNumber = num + 1;
+    handleNumber = num + 1; // only 0 to num-1 be used
     nextEvent = 0;
     isThisFunc = func;
     __DO1(eventFd,
@@ -72,14 +72,16 @@ INT RMultiEvent::EventWrite(ADDR addr)
 {
   int status;
   __TRY
-    __DO (handleStart == handleEnd);
     __LOCK(handleLock);
+    __DO (handleStart == handleEnd);
     handleBuffer[handleStart] = addr;
     if (++handleStart == handleNumber) handleStart = 0;
     __FREE(handleLock);
     __DO1(status,
 	  write(eventFd, &CONSTADDR, sizeof(ADDR)));
-  __CATCH
+  __CATCH_BEGIN
+    __FREE(handleLock);
+  __CATCH_END
 }
 
 INT RMultiEvent::EventRead(ADDR &addr)

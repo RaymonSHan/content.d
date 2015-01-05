@@ -128,7 +128,7 @@ public:
 
 #define setClassName()				\
   getTraceInfo(threadInfo);			\
-  threadInfo->className = getClassName();
+  threadInfo->className = (PCHAR)getClassName();
 
 #define MAX_NEST_LOOP           255                             // number of func call nest
 
@@ -142,7 +142,7 @@ typedef struct perTraceInfo {
 // MUST be multi of NORMAL_PAGE_SIZE
 typedef struct threadTraceInfo {
   INT   nowLevel;
-  const char *className;
+  PCHAR className;
   INT   pad[2];
   perTraceInfo calledInfo[MAX_NEST_LOOP];
 }threadTraceInfo;

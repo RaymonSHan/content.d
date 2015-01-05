@@ -152,7 +152,8 @@ INT CMemoryAlloc::CountTimeout(ADDR usedStart)
   ADDR  thisAddr, nextAddr;
 
   __TRY
-    __DO (!CmpExg(&inCountDown, NOT_IN_PROCESS, IN_PROCESS));
+    //    __DO (!CmpExg(&inCountDown, NOT_IN_PROCESS, IN_PROCESS));
+    __DO(__LOCK__TRY(inCountDown));
     if (usedStart > MARK_MAX) {
       thisAddr = usedStart;
       nextAddr = thisAddr.UsedList;
@@ -178,7 +179,8 @@ INT CMemoryAlloc::CountTimeout(ADDR usedStart)
 	if (thisAddr.UsedList == nextAddr) thisAddr = nextAddr;   // have do step one, no go next
 	nextAddr = thisAddr.UsedList;
       } }
-    inCountDown = NOT_IN_PROCESS;
+    //    inCountDown = NOT_IN_PROCESS;
+    __FREE(inCountDown);
   __CATCH
 }
 
@@ -187,7 +189,7 @@ INT CMemoryAlloc::SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag
   static HANDLE_LOCK lockList = NOT_IN_PROCESS;
   GetThreadMemoryInfo();
 
-  __TRY
+  __TRY__
     info->getSize = getsize;
     info->freeSize = freesize;
     info->threadFlag = flag;
@@ -199,7 +201,7 @@ INT CMemoryAlloc::SetThreadArea(INT getsize, INT maxsize, INT freesize, INT flag
     info->threadListNext = threadListStart;
     threadListStart = info;
     __FREE(lockList);
-  __CATCH
+  __CATCH__
 }
 
 INT CMemoryAlloc::SetMemoryBuffer(INT number, INT size, INT border, INT direct, INT buffer)

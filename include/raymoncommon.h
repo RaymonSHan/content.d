@@ -90,6 +90,8 @@ typedef void*                   PVOID;
 #define __AFTER(x)              if (ret_err >= __TO_MARK(x))
 #define __CATCH_END             endCall(); return ret_err;
 #define	__CATCH                 endCall(); return 0; error_stop: endCall(); return ret_err;
+#define __TRY__                 beginCall();
+#define __CATCH__               endCall(); return 0;
 #define __BREAK                 { goto error_stop; }
 #define __BREAK_OK              { ret_err = 0; goto error_stop; }
 
@@ -166,6 +168,7 @@ void    __MESSAGE(INT level, const char * _Format, ...);
 #define __LOCKp(lock)           while(!CmpExg(lock, NOT_IN_PROCESS, IN_PROCESS));
 #define __FREEp(lock)           *lock = NOT_IN_PROCESS;
 #define __LOCK(lock)            while(!CmpExg(&lock, NOT_IN_PROCESS, IN_PROCESS));
+#define __LOCK__TRY(lock)       !CmpExg(&lock, NOT_IN_PROCESS, IN_PROCESS)
 #define __FREE(lock)            lock = NOT_IN_PROCESS;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -173,14 +176,14 @@ void    __MESSAGE(INT level, const char * _Format, ...);
 ////////\///////////////////////\///////////////////////////////\//////////////////////////        //
 #define __class(name)           class name {					\
                                   protected:			     		\
-				    virtual const char* getClassName(void) {    \
-				     return #name; };				\
+				  virtual const char* getClassName(void) {    	\
+				    return #name; };		\
                                   private:
 
 #define __class_(name, base)    class name : public base {			\
                                   protected:			     		\
-				    virtual const char* getClassName(void) {    \
-				     return #name; };				\
+				  virtual const char* getClassName(void) {      \
+				    return #name; };		\
                                   private:
 
 #endif  // INCLUDE_RAYMONCOMMON_H
